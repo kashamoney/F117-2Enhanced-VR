@@ -19,6 +19,7 @@
 #include "enhanced/enhanced.h"
 #include "enhanced/sandbox.h"     /* ENH: S2.4 */
 #include "enhanced/record.h"      /* ENH: video capture aid (F117_RECORD) */
+#include "enhanced/vr.h"          /* ENH: optional headset / desktop stereo presentation */
 
 #define OPL_RATE 49716u                /* Nuked-OPL3 native rate; SDL resamples */
 
@@ -117,6 +118,7 @@ bool host_init(const HostConfig *cfg)
     frame_reserve(HOST_FRAME_MAX_W, HOST_FRAME_MAX_H);
     nominal_w = 320 * (cfg->scale < 1 ? 3 : cfg->scale);
     nominal_h = (aspect43 ? 240 : 200) * (cfg->scale < 1 ? 3 : cfg->scale);
+    if (vr_enabled()) nominal_w = nominal_h = vr_options.resolution; /* ENH: same canvas for offline and headset eye passes */
     { const char *w = SDL_getenv("F117_WINDOW"); int ww, wh;   /* ENH: S3.4 test aid, the window size a headless run pretends to have (WxH) */
       if (w && SDL_sscanf(w, "%dx%d", &ww, &wh) == 2 && ww >= 320 && wh >= 200 && ww <= 8192 && wh <= 8192) { nominal_w = ww; nominal_h = wh; } }
     { const char *v = SDL_getenv("F117_VCLOCK"); vclock = v && *v && *v != '0'; }   /* ENH: S2.4 */
@@ -130,12 +132,17 @@ bool host_init(const HostConfig *cfg)
         return false;
     }
     int scale = cfg->scale < 1 ? 3 : cfg->scale;
-    if (!SDL_CreateWindowAndRenderer("F-117A Nighthawk Stealth Fighter 2.0", 320 * scale,
-                                     (aspect43 ? 240 : 200) * scale, SDL_WINDOW_RESIZABLE, &window, &renderer)) {
+    if (!SDL_CreateWindowAndRenderer("F-117A Nighthawk Stealth Fighter 2.0", vr_enabled() ? vr_options.resolution : 320 * scale,
+                                     vr_enabled() ? vr_options.resolution : (aspect43 ? 240 : 200) * scale,
+                                     vr_enabled() ? 0 : SDL_WINDOW_RESIZABLE, &window, &renderer)) { /* ENH: fixed eye canvas */
         fprintf(stderr, "window/renderer failed: %s\n", SDL_GetError());
         return false;
     }
-    SDL_SetRenderVSync(renderer, 1);
+    SDL_SetRenderVSync(renderer, vr_enabled() ? 0 : 1); /* ENH: OpenXR owns headset pacing */
+    if (vr_enabled()) {                               /* ENH: D3D11 presenter uses this window for the stereo mirror */
+        void *hwnd = SDL_GetPointerProperty(SDL_GetWindowProperties(window), SDL_PROP_WINDOW_WIN32_HWND_POINTER, NULL);
+        if (!vr_start(hwnd)) return false;
+    }
     if (cfg->fullscreen) SDL_SetWindowFullscreen(window, true);
     SDL_HideCursor();                                    /* the programs draw their own pointer */
     host_set_frame_source(NULL, 320, 200);
@@ -157,6 +164,7 @@ bool host_init(const HostConfig *cfg)
 
 void host_shutdown(void)
 {
+    vr_stop();                                       /* ENH: release the headset before the SDL window */
     if (audio) SDL_DestroyAudioStream(audio);
     audio = NULL;
     if (gamepad) SDL_CloseGamepad(gamepad);
@@ -180,7 +188,7 @@ u64  host_ticks(void) { return ticks_run; }
 static int frame_ticks = HOST_DEFAULT_FRAME_TICKS;
 void host_set_frame_ticks(int ticks) { frame_ticks = ticks < 0 ? 0 : ticks > 70 ? 70 : ticks; }
 int  host_frame_ticks(void) { return frame_ticks; }
-bool host_quit_requested(void) { return quit_requested; }
+bool host_quit_requested(void) { return quit_requested || vr_wants_quit(); } /* ENH: runtime exit */
 void host_set_kbd_handler(void (*handler)(u8)) { kbd_handler = handler; }
 void host_set_focus_lost_handler(void (*handler)(void)) { focus_lost_handler = handler; }
 void host_set_mouse_handler(void (*handler)(int, int, u8)) { mouse_handler = handler; }
@@ -333,6 +341,7 @@ static void present(void)
                                           (double)((vclock ? vclock_ns : SDL_GetTicksNS()) - clock_start_ns) / 1e9);
     snapshot();
     if (!texture) return;
+    if (vr_enabled()) return;                       /* ENH: native D3D11 stereo mirror is presented by vr_tick */
     const Uint64 t0 = SDL_GetTicksNS();                   /* ENH: S4.1, the cost per present */
     SDL_UpdateTexture(texture, NULL, frame, frame_w * 4);
     SDL_SetRenderDrawColor(renderer, 0, 0, 0, 255);
@@ -434,6 +443,7 @@ void host_pump(void)
             worked = true;
         }
     }
+    if (vr_enabled()) vr_tick(frame, frame_w, frame_h); /* ENH: also runs on static menus and while paused */
     if (!worked && !vclock) {                       /* ENH: S2.4, the virtual clock never sleeps */
         Uint64 next = tick_due_ns(ticks_run + 1);
         now = SDL_GetTicksNS();
@@ -566,15 +576,17 @@ static void process_events(void)
             quit_requested = true;                  /* the chain loop stops like after Ctrl-Break */
             break;
         case SDL_EVENT_KEY_DOWN:
+            if (vr_key(ev.key.scancode, true, ev.key.repeat)) break; /* ENH: F12 recenter, F11 cockpit */
             /* Alt+Enter toggles fullscreen; everything else goes to the game, repeats included. */
             if (ev.key.key == SDLK_RETURN && (ev.key.mod & SDL_KMOD_ALT)) {
-                if (!ev.key.repeat)
+                if (!ev.key.repeat && !vr_enabled()) /* ENH: keep the stereo source canvas at its selected resolution */
                     SDL_SetWindowFullscreen(window, !(SDL_GetWindowFlags(window) & SDL_WINDOW_FULLSCREEN));
                 break;
             }
             key_event(ev.key.scancode, true);
             break;
         case SDL_EVENT_KEY_UP:
+            if (vr_key(ev.key.scancode, false, false)) break; /* ENH: consume matching VR key releases */
             key_event(ev.key.scancode, false);
             break;
         case SDL_EVENT_WINDOW_PIXEL_SIZE_CHANGED:     /* Alt+Enter, resizing, a static picture: redraw it */

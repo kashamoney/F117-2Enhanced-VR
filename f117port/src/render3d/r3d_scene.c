@@ -6,6 +6,8 @@
 #include "sim/sim_priv.h"
 #include "enhanced/sandbox.h"   /* ENH: S2.4 */
 #include "enhanced/wide.h"      /* ENH: S3.4 */
+#include "enhanced/vr.h"        /* ENH: per-object stereo translation scale */
+#include <math.h>
 
 #define LONG(o) ((s32)DSL(o))
 
@@ -202,6 +204,7 @@ void r3d_draw_model(u16 model, s32 x, s32 y, s16 alt, s16 ang1, s16 ang2, s16 an
         rz = (s16)(rz - DSS(0xB75C) + DSS(0x2DF4));
     }
     s16 sh = (s16)(lod - (DSB(0x294B) == 0 ? 3 : 2));
+    vr_object_units(ldexp(1.0, sh));   /* ENH: eye displacement must use the model's LOD scale */
     if (sh > 0) { rx = shl32(rx, (unsigned)sh); ry = shl32(ry, (unsigned)sh); rz = (s16)(u16)((u16)rz << (sh & 31)); }
     if (sh < 0) { unsigned n = (unsigned)(u16)-sh; rx = sar32(rx, n); ry = sar32(ry, n); rz = (s16)(rz >> (n & 31)); }
     if (abs16((s16)rx) < 0x7FFF && abs16((s16)ry) < 0x7FFF) {
@@ -267,6 +270,7 @@ void r3d_queue_insert(void)
     DSSL(e) = key;
     DSW((u16)(e + 4)) = (u8)r3d_depth_shade();
     ENH_HR(hr_shade_queue(e));   /* ENH: S3.5 */
+    vr_queue_units(e);          /* ENH: preserve the model scale alongside the sorted record */
     DSW((u16)(e + 6)) = DSW(0x49C6); DSW((u16)(e + 8)) = DSW(0x4956);
     DSW((u16)(e + 0xA)) = DSW(0x4964); DSW((u16)(e + 0xC)) = DSW(0x4966); DSW((u16)(e + 0xE)) = DSW(0x4968);
     DSW((u16)(e + 0x10)) = DSW(0x496A); DSW((u16)(e + 0x12)) = DSW(0x496C); DSW((u16)(e + 0x14)) = DSW(0x496E);
@@ -305,6 +309,7 @@ void r3d_draw_queued(void)
     u16 m1 = 0x21, m2 = 0x22, extra_first = 0;                          /* locals of the original, kept across records */
     for (s16 i = 0; i < DSS(0x49C4); i++) {
         u16 rec = QPTR(i), v;
+        vr_dequeue_units(rec);  /* ENH: restore that record's stereo translation scale */
         if (DSW((u16)(rec + 8)) & 0x8000) { DSW(0xC030) = 1; v = 0; } else { DSW(0xC030) = 0; v = DSW(0x9874); }
         DSW(0xC044) = v; DSW(0xC042) = v;
         u16 t = DSW((u16)(rec + 8));

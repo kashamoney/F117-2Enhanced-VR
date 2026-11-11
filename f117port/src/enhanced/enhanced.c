@@ -1,5 +1,6 @@
 /* The Enhanced options (see enhanced.h). */
 #include "enhanced.h"
+#include "enhanced/vr.h"
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -24,7 +25,7 @@ bool enh_smooth_on(void) { return enh.smooth_shading && enh_canvas_on(); }
 bool enh_true_night_on(void) { return enh.true_night && enh_canvas_on(); }
 bool enh_fine_terrain_on(void) { return enh.fine_terrain && !enh.classic && !env_classic(); }
 bool enh_fps_on(void) { return (enh.fps != 0 || enh.fps_test > 0) && enh_canvas_on(); }
-bool enh_sandbox_on(void) { return !enh.classic && enh.sandbox_test > 0 && !env_classic(); }
+bool enh_sandbox_on(void) { return !enh.classic && (enh.sandbox_test > 0 || vr_enabled()) && !env_classic(); }
 
 int enh_parse_arg(int argc, char **argv, int i)
 {

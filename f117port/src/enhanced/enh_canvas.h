@@ -108,6 +108,7 @@ typedef struct { int w, h, n; size_t cap, pcap; u8 *pg; u16 *l3; u8 *l3n; } EnhM
 bool enh_map_cache_grab(EnhMapCache *c, u16 seg, int x, int y, int w, int h);
 void enh_map_cache_put(const EnhMapCache *c, u16 seg, int x, int y, int w, int h, int sxl, int syl);
 void enh_compose_work(u32 *out, const u8 *page, const u32 *pal, bool blend);   /* S3.1 test aid: the frame being drawn composed from `page` (S3.5: blend = pal is the DAC, mix the blend codes) */
+void enh_vr_hud_alpha(u32 *frame);                   /* ENH: mask the 320x91 HUD from actual vector records, excluding scenery */
 /* S3.3: the HUD / MFD vector lines at N x (hr_obj.c). A hook pair around the 1x drawing of line() / hud_tick_strip(): begin decides (true = the 1x footprint is held, SRC_VECHR) and end
  * draws the same line / ticks thin (max(1, N/2) layer pixels, Decisions Q3) in the vector layer, from the 1x endpoints (frame pixels incl. draw_off). */
 extern bool enh_hud_hr_off;                             /* test aid (--compose-test): no hr look for the 1x lines */

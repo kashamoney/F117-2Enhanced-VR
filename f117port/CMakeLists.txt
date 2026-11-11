@@ -30,6 +30,23 @@ add_executable(f117 ${F117_SOURCES})
 target_include_directories(f117 PRIVATE src src/gen)
 set_target_properties(f117 PROPERTIES OUTPUT_NAME f117-enhanced)   # ENH: the Enhanced executable
 target_link_libraries(f117 PRIVATE SDL3::SDL3 nuked_opl3)
+
+# ENH: explicit opt-in; the normal desktop build has no OpenXR or D3D11 dependency.
+option(F117_OPENXR "Build the Windows OpenXR headset and stereo preview backend" OFF)
+if(F117_OPENXR)
+    if(NOT WIN32)
+        message(FATAL_ERROR "The initial VR backend requires Windows and Direct3D 11")
+    endif()
+    enable_language(CXX)
+    find_package(OpenXR REQUIRED CONFIG)
+    target_sources(f117 PRIVATE src/enhanced/vr_xr.cpp)
+    target_compile_definitions(f117 PRIVATE F117_OPENXR=1)
+    target_compile_features(f117 PRIVATE cxx_std_17)
+    if(NOT MSVC)
+        set_source_files_properties(src/enhanced/vr_xr.cpp PROPERTIES COMPILE_OPTIONS "-Wno-missing-field-initializers") # OpenXR's {type} zero-initialization idiom
+    endif()
+    target_link_libraries(f117 PRIVATE OpenXR::openxr_loader d3d11 dxgi d3dcompiler)
+endif()
 if(MSVC)
     target_compile_options(f117 PRIVATE /W3)
 else()
@@ -54,6 +71,7 @@ endif()
 
 # Tests (ctest): the chain with the placeholder programs, the tick source, and the game-folder check.
 enable_testing()
+add_test(NAME enh_vr_math COMMAND f117 --vr-selftest) # ENH: physical IPD, attitude composition, sub-foot precision
 add_test(NAME chain COMMAND f117 --headless --chain-test)
 set_tests_properties(chain PROPERTIES PASS_REGULAR_EXPRESSION "chain-test OK")
 add_test(NAME keymap COMMAND f117 --keymap-test)

@@ -7,6 +7,7 @@
 #include "render3d/r3d.h"
 #include "enhanced/sandbox.h"      /* ENH: S2.4 */
 #include "enhanced/wide.h"         /* ENH: S3.4 */
+#include "enhanced/vr.h"           /* ENH: fractional eye translation inside saved-state passes */
 
 #define BANK()  DSW(0x8560)
 #define ESW(o)  rd16(BANK(), (u16)(o))
@@ -458,6 +459,7 @@ static u16 object_head(u16 obj, s16 x, s16 y, s16 z, u16 mat9, bool frustum_alwa
 {
     DSW(0x7C9C) = (u16)x; DSW(0x7C9E) = (u16)y; DSW(0x7CA0) = (u16)z; DSW(0x7D1C) = mat9;
     vec_mat32(0x7C9C, 0x7AF8, 0x7CA2);
+    vr_translate_object();        /* ENH: retains sub-foot stereo offsets in 16.16 camera space */
     u16 si = ESW(2 * obj + 2);
     u16 az = abs16(DSS(0x7CAC)), md, mdl;
     do { md = ESW(si); mdl = ESW(si + 2); si = (u16)(si + 4); } while (az > md);

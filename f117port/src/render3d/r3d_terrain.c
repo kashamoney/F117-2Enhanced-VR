@@ -1,6 +1,7 @@
 /* Terrain and scenery of render3d (spec port/spec/render3d.md Part 1 section 2 and Part 3): level conversion 0804, tile types 0865, the scenery override 0FB1,
  * the terrain walk 04DA, the map-MFD terrain 119C / 11F2 / 1353 / 13AC / 13E3, the scenery collision probe 0FFB / 77D9 and the site / unit helpers BC12 / BCD7. */
 #include "render3d/r3d.h"
+#include "enhanced/vr.h"          /* ENH: physical scale of each terrain level */
 #include "sim/sim.h"
 #include "enhanced/wide.h"   /* ENH: S3.4 */
 #include "enhanced/enhanced.h"   /* ENH: fine terrain */
@@ -52,6 +53,7 @@ void r3d_draw_terrain(s16 a1, s16 pitch, s32 x, s32 y, s32 z)
     u16 oct = (u16)((u16)(0x1000 - a1) >> 13);
     for (DSW(0xE2FC) = 4; DSS(0xE2FC) >= 1; DSW(0xE2FC)--) {
         s16 L = DSS(0xE2FC);
+        vr_terrain_units(L);      /* ENH: stereo translation in this level's model units */
         if (DSW((u16)(0x04FA + 2 * L)) == 0) continue;
         u32 u = terr_to_level(L, (u32)x);
         s16 cx = (s16)(u16)(u >> 12), fx = (s16)(u & 0x0FFF);

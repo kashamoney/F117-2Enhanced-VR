@@ -37,6 +37,7 @@
 #include <string.h>
 
 #include "host.h"
+#include "enhanced/vr.h"                 /* ENH: optional OpenXR / stereo preview */
 #include "keymap.h"
 #include "mem.h"
 #include "platform/platform.h"
@@ -62,6 +63,8 @@ static int usage(const char *prog)
             "usage: %s [--game-dir DIR] [--scale N] [--aspect 4:3|1:1] [--fullscreen] [--headless]\n"
             "          [--trace] [--check] [--chain-test] [--tick-test [MS]]\n"
             "          [--keys NAME=CODE,...] [--keymap-test] [--frame-ticks N] [--version] [--classic]\n"
+            "          [--vr|--vr-preview] [--vr-resolution 640..2048] [--vr-world-scale 0.1..10]\n"
+            "          [--vr-no-cockpit] [--vr-dump] [--vr-diagnostic] [--vr-selftest]\n"
             "          [--render-scale N] [--wide] [--no-wide] [--smooth-shading] [--true-night] [--fps vsync|60|30|off]\n"
             "          [--compose-test] [--interp-test]   (Enhanced)\n", prog);
     return 2;
@@ -102,6 +105,7 @@ int main(int argc, char **argv)
     int tick_ms = 1000;
     for (int i = 1; i < argc; i++) {
         const char *a = argv[i], *v = i + 1 < argc ? argv[i + 1] : NULL;
+        { int used = vr_parse_arg(argc, argv, i); if (used) { i += used - 1; continue; } } /* ENH: optional VR */
         { int used = enh_parse_arg(argc, argv, i); if (used) { i += used - 1; continue; } }   /* ENH: --classic and the Enhanced options */
         if (!strcmp(a, "--game-dir") && v) { cfg.game_dir = v; i++; }
         else if (!strcmp(a, "--scale") && v) { cfg.scale = atoi(v); i++; }
@@ -142,6 +146,15 @@ int main(int argc, char **argv)
         else return usage(argv[0]);
     }
     enh_env_args();                                            /* ENH: S2.4, F117_ENH_ARGS before anything runs (--sandbox-hash sees the whole chain) */
+    if (vr_options.selftest) return vr_selftest();              /* ENH: no runtime or game files required */
+    if (vr_options.diagnostic) return vr_diagnostic();
+    if (vr_enabled()) {                                       /* ENH: fixed square eye canvas, unthrottled headset presentation */
+        if (vr_options.mode == 3) cfg.headless = true;
+        if (cfg.headless && vr_options.mode != 3) { fprintf(stderr, "VR requires a window; use --vr-selftest for headless checks.\n"); return 2; }
+        cfg.aspect_4_3 = false;
+        enh.render_scale = vr_options.resolution / 1024 > 0 ? vr_options.resolution / 1024 : 1;
+        enh.wide = true; enh.fps = 0;
+    }
     if (ktest) return keymap_selftest();                       /* needs neither window nor game files */
     if (check || tick || ptest || etest || vself || decref || feref || shref || dbref || sndref || simref || r3dref || enh.compose_test) cfg.headless = true;
     if (host_trace()) prog_trace = true;

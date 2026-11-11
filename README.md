@@ -61,6 +61,122 @@ Needs CMake 3.24, a C11 compiler and SDL 3 (MSYS2 `mingw64`: `mingw-w64-x86_64-s
 `mingw-w64-x86_64-wxwidgets3.2-msw` for the launcher; `-DF117_LAUNCHER=OFF` skips it). The program is
 `f117port/build/f117-enhanced.exe`. Tests that need the game files skip themselves when `Game/` is missing.
 
+## Experimental seated VR (Windows / OpenXR)
+
+This development branch adds stereoscopic flight with headset rotation and position,
+seated recentering, a simple geometric cockpit, and the original live instrument panel.
+Menus are displayed on a virtual screen. Keyboard and gamepad flight controls stay the same.
+The backend uses OpenXR through SteamVR and Direct3D 11, including headsets connected
+through the Oasis driver such as the Samsung Odyssey+. It is an experimental prototype;
+headset comfort, scale, and sustained frame timing need testing on the actual headset.
+
+Run **`Play-VR.cmd`** from this repository with SteamVR running and the headset tracking.
+The default game folder is `../F117-Enhanced-play/Game` in this workspace. Original files
+stay separate from the source and the game saves your pilot roster in that working copy.
+Run **`Preview-VR.cmd`** for a desktop stereo preview without a headset.
+The desktop mirror shows the two square eye images side by side.
+
+For a first headset test, **`Carrier-VR.cmd`** prepares a separate practice copy with a test
+pilot and automatically navigates setup/briefing to a Libya carrier mission. Allow the intro
+and scripted menus to finish; then the aircraft is stationary on deck and you have control.
+This shortcut requires Python 3 and leaves your regular pilot roster untouched. Practice
+copies are under `work/vr-practice/`. `tools/Start-VR.ps1 -Preview -CarrierPractice` runs the
+same practice scenario on the desktop.
+
+| Control | Action |
+|---|---|
+| F12 | Recenter the seated position and heading; look straight ahead when pressing it |
+| F11 | Show/hide the prototype cockpit |
+| Ctrl + arrow keys | Look around in desktop preview (release Ctrl to fly with the arrow keys) |
+| Alt + P / Enter | Pause / resume the simulation; head tracking continues while paused |
+| Original game keys | Targeting, weapons, flaps, gear, throttle, and flight |
+
+The mirror window must have keyboard focus. Head tracking owns the flight viewpoint:
+the exterior/cockpit-view shortcuts and `C` view toggle are suppressed in VR. The fixed-size
+mirror also suppresses Alt+Enter fullscreen. The desktop preview uses a 64 mm
+eye separation; headset mode uses the actual eye poses reported by OpenXR.
+
+Build prerequisites: MSYS2 `mingw64`, then in its shell:
+
+```sh
+pacman -S --needed mingw-w64-x86_64-gcc mingw-w64-x86_64-cmake mingw-w64-x86_64-ninja mingw-w64-x86_64-sdl3 mingw-w64-x86_64-openxr-sdk
+```
+
+Build and check with PowerShell:
+
+```powershell
+.\tools\Build-VR.ps1
+.\tools\Start-VR.ps1 -Diagnostic
+.\tools\Start-VR.ps1
+.\tools\Start-VR.ps1 -Preview
+```
+
+`Build-VR.ps1 -DesktopOnly` builds without the OpenXR dependency. The original launcher
+is omitted from these development builds; the normal release and its launcher are unchanged.
+The equivalent CMake switch for enabling the backend is `-DF117_OPENXR=ON` (default OFF).
+The build copies SDL/OpenXR/compiler runtime DLLs beside the executable.
+
+Advanced launch options:
+
+```powershell
+.\tools\Start-VR.ps1 -Resolution 768 -WorldScale 1.0 -DumpEyes
+.\tools\Start-VR.ps1 -GameDirectory 'D:\Games\F117'
+```
+
+`--vr-resolution 640..2048` sets each software-rendered eye image (default 1024).
+The headset submission targets use OpenXR's recommended sizes. Lower the software
+resolution if frame times are too high; this is a CPU software renderer, and a fast GPU
+does not guarantee native headset frame rate. `--vr-world-scale 0.1..10` sets physical
+metres per game metre; default 1.0 uses the original 512 km theatre / 0x100000 world-unit
+mapping (about 0.488 m per renderer unit). The game's exaggerated vertical scale and
+high-altitude compression are preserved, so HUD altitude is not a literal VR ruler.
+`--vr-no-cockpit` starts with the cockpit hidden. `--classic` disables VR.
+`--vr-dump` writes the first pair of software world images to the working directory.
+Session logs are in `work/vr-session/f117-vr.log`; original crash logs remain beside the exe.
+
+Implementation and current limits:
+
+* Each eye renders from the same pre-render snapshot and interpolation alpha. All engine
+  memory and canvas state are restored afterward; eye rendering never advances gameplay.
+* Sub-foot eye offsets are applied to 16.16 camera translations, with the terrain/model
+  scale tracked through the sorted object queue. The eye baseline survives integer rounding.
+* The original cockpit pictures are reused on an aircraft-fixed instrument panel. The
+  canopy frame, consoles, floor and seat are simple new geometry, not a detailed F-117 interior.
+* The prototype HUD extracts symbols using the compositor's vector drawing records onto a
+  transparent, finite-distance surface. It is not a collimated optical HUD; target alignment
+  needs review in the headset. An optical HUD with a defined viewing aperture is follow-up work.
+* There are no motion-controller interactions or clickable cockpit switches. Use the existing
+  keyboard or gamepad. The original gamepad handling and game rules are unchanged.
+* Tracking loss submits an empty frame; a runtime exit closes the game. Errors are logged.
+  If startup fails, run `-Diagnostic`. SteamVR must be the active OpenXR runtime. An
+  `Oasis_UnlockRequired` result comes from the driver: use the official
+  [Oasis unlock instructions](https://github.com/mbucchia/Oasis-Driver-for-Windows-Mixed-Reality/wiki/Procedure-to-unlock-headset-and-controllers-for-Oasis).
+
+Offline integration check (no headset required):
+
+```powershell
+python tools/test_vr.py --exe f117port/build-vr/f117-enhanced.exe --game-dir ../F117-Enhanced-play/Game
+```
+
+This runs a deterministic real mission on scratch copies of the game, checks identical
+eye poses, physical stereo disparity and head rotation, and compares engine hashes and
+the final pilot roster against a run with VR rendering off. Images/logs are saved under
+`work/vr-check/`. `--vr-selftest` checks pose math without game files or a headset.
+Add `--preview-smoke` to exercise the native D3D11 window and save `vr-mirror.png` with
+the GPU-rendered cockpit. In this workspace the 43 regression checks, stereo integration
+and native preview have passed; a live Odyssey+/Oasis carrier scene also submits at about
+90 frames/s with default settings. Visual comfort/readability and performance in flight
+remain user checks.
+
+The full upstream regression suite additionally uses Python `unicorn`, `numpy`, and
+`Pillow`, the faithful companion repository's tools/specs, original files through a
+`Game` junction, and unpacked EXEs in `work/unpacked/`. These are prepared locally in
+this workspace; the test Python is `../.vr-tools/python/Scripts/python.exe` and the
+reference repository is `../.vr-tools/faithful` (also reachable through `../F117-2`).
+For this non-default build directory, set `F117_COMM` to the absolute path of
+`f117port/build-vr/shell_ref/ground/comm.bin` after the `shell` test, and `PYTHONPATH`
+to the absolute reference `tools` directory before running the remaining ctests.
+
 ## Launcher
 
 `f117-enhanced-launcher.exe` is the faithful port's launcher (game folder, window, speed, sound, key bindings)

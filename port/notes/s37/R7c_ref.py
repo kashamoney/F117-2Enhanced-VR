@@ -1,8 +1,9 @@
 """R7c Python reference of VGAME far segments 1433 (fixed-point math), 1001 (2D edge tables) and 0000:1442
 (sky/ground bands). Bit-exact model used by R7c_emu.py (Unicorn differential test)."""
 import struct
+from pathlib import Path
 
-D = open('C:/Coding/F117-2/work/unpacked/VGAME.EXE', 'rb').read()
+D = (Path(__file__).resolve().parents[3] / 'work' / 'unpacked' / 'VGAME.EXE').read_bytes()  # ENH: portable reference tables for local regression builds
 IMG = D[struct.unpack_from('<H', D, 8)[0] * 16:]
 T14B2 = 0x14B20
 DSB = 0x1E230

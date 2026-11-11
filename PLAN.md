@@ -22,6 +22,7 @@ remove it when it is done.
 
 | Task | What to do | For | Time |
 |---|---|---|---|
+| U-VR | The Odyssey+ session is running the carrier practice scene. Look forward and press F12. Check stereo depth, head rotation/lean, panel readability, F11 cockpit toggle, pause/head tracking, and a carrier launch. Relaunch with `Carrier-VR.cmd` or use `Play-VR.cmd` for your regular pilot. | S8.1 | 15 min |
 | U1 (S4.1) | Run `& "C:\Coding\F117-2Enhanced\f117port\build\f117-enhanced.exe" --game-dir "C:\Coding\F117-2\Game" --render-scale 4 --fps vsync`, fly a mission, then the same with `--fps off`. Look for: the own aircraft / camera motion and the horizon smooth (vs stepping at ~10 Hz with off), any judder or a hitch at regular intervals, objects (ground units, other aircraft) still stepping (expected until S4.2), the HUD ladder / horizon moving with the world, pause (Alt-P) and view switches (F1..F10, c) without black flashes, the latency feel of the controls. Also try `--true-night --smooth-shading` (expected: hardly smoother, too slow at N = 4) and `--render-scale 2` | S4.1 | 15 min |
 | U1 (S4.3) | Same build as U1 (S4.1), so do them together. Run `& "C:\Coding\F117-2Enhanced\f117port\build\f117-enhanced.exe" --game-dir "C:\Coding\F117-2\Game" --render-scale 4 --fps vsync`, fly a mission in the first cockpit view, then the same with `--fps off`, then with `--fps vsync --smooth-shading --true-night` (a night mission). Look for: (1) smoothness: the horizon and the world glide with vsync and step at ~10 Hz with off; no hitch once per step (about 10 a second) and no other regular judder; (2) the fallback: with smooth shading + true night the motion is still even but at a lower rate (on your 164 Hz monitor about 41-55 pictures a second; on a 60 Hz one 30), not uneven; (3) no picture changes against S4.1 / `--fps off`: the same HUD, panel, MFDs, TV and map windows, the extended world beside the frame, no flicker, no black or stale strips, night shading the same. Also try `--fps 60` and `--fps 30`, and a 4:3 window or `--no-wide` (the views without extension) | S4.3 | 15 min |
 | U1 (S4.2) | Same build. Run `& "C:\Coding\F117-2Enhanced\f117port\build\f117-enhanced.exe" --game-dir "C:\Coding\F117-2\Game" --render-scale 4 --fps vsync`, fly a mission with traffic and threats (taxi past the airbase traffic, fly over a SAM / radar site, get shot at, drop a bomb), then the same with `--fps off`. Look for: ground units, other aircraft, missiles, tracers, smoke and the falling wreck gliding (not stepping at ~10 Hz as with off); radar dishes turning smoothly; the HUD ladder, horizon, heading tape, target boxes and velocity vector moving with the world, locked to it (no lag or wobble against the ground); the delayed view (F-key cycle) and the target views smooth; no object jumping back, flickering or doubling when a missile is fired, a unit is destroyed or a view changes | S4.2 | 15 min |
@@ -31,6 +32,7 @@ remove it when it is done.
 
 ## Status
 
+- **Local VR branch:** S8.1 built 2026-11-11; stereo software rendering, D3D11 preview and live OpenXR carrier scene checked on the Odyssey+/Oasis through SteamVR (about 90 submitted frames/s); visual/comfort validation pending (U-VR). This is the user's explicitly requested extension beyond the upstream original-art goal.
 - **Done:** S0.1 (repo from the faithful port), S1.1 (`DESIGN.md`, the render and timing design), S2.1 (canvas, compositor, shadow plane; U1 OK 2026-10-19), S2.2 (render3d at N×; U1 OK 2026-10-20), S2.3 (tests, reference rasteriser, dumps; U1 OK 2026-10-20), S2.4 (sandboxed display pass, hash ctest), S3.1 (objects and views at N×; U1 OK 2026-10-20), S3.2 (TV camera and map MFD at N×; U1 OK 2026-10-20), S3.3 (HUD and MFD vector graphics at N×; U1 OK 2026-10-21), S3.4 (wider view; U1 OK 2026-10-22), S3.5 (smooth distance shading, option; U1 OK 2026-10-22), S3.6 (true night, option; U1 OK 2026-10-26).
 - **Release:** v0.1.0 released 2026-10-26; v0.2.0 (smooth frames) released 2026-10-29 (S6.3, tag v0.2.0).
 - **Phase 4:** S4.1 (decouple sim and display, `--fps`) built, U1 pending; S4.3 (one render per refresh, budget, 30 Hz fallback) built, U1 pending.
@@ -301,3 +303,18 @@ Enhanced port (whose rule is: original art and sim unchanged). Recorded 2026-10-
   as 0.49 m, x1.6). A mod would make altitude true scale (no bands, 1 ft = 0.3048 m against the horizontal unit). It
   touches every user of `alt_s`: the 3D camera and objects, unit/projectile/tracer z, the radar altitude cone, AI
   altitude targets, collision and terrain probes, landing, so it is a sim change, not a rendering option.
+
+## Phase 8: local VR prototype (user request, 2026-11-11)
+
+| ID | Subtask | Status |
+|---|---|---|
+| S8.1 | Windows OpenXR/D3D11 stereo flight through SteamVR/Oasis; fractional eye offsets, rotation/position tracking and recentering; simple seated cockpit with original live panel and vector HUD; desktop preview, build/launch scripts, state-restoration and real-scene tests | built 2026-11-11 · U-VR pending |
+
+Notes:
+- User authorized the VR implementation and new placeholder cockpit geometry in this session. Game rules, original assets and `--classic` remain unchanged.
+- Implementation: `src/enhanced/vr.[ch]`, `vr_xr.cpp`, saved-state eye rendering in `sandbox.c`; small marked hooks in host and render3d. Optional CMake `F117_OPENXR`, off by default.
+- Both eyes share the same simulation snapshot and interpolation alpha. Physical eye displacement is retained in 16.16 object translations with terrain/LOD scale carried alongside sorted records. The 512 km theatre mapping sets world scale; the original vertical exaggeration and altitude bands are retained.
+- `tools/test_vr.py` checks a real carrier scene, repeated poses, stereo/head movement and a whole scripted mission's state hashes/roster. `--preview-smoke` additionally exercises the native D3D11 presenter and writes a GPU cockpit mirror for user visual review.
+- Verification: all 43 regression tests passed across the verification runs after preparing the companion reference tools/data and portable R7c table path. VR-off desktop build: 10 basic checks passed. Stereo integration: 213 identical engine hashes and final roster, repeated-pose equality, stereo disparity and head-turn changes; native D3D11 cockpit mirror smoke test passed.
+- Live headset check: SteamVR/OpenXR detects Windows Mixed Reality through Oasis, recommended targets 1716x1868 per eye. The actual carrier practice session renders stereo at about 90 submitted frames/s with default 1024-square software eye images; runtime logs show no rendering errors. This is a local observation, not a guarantee for all missions/settings.
+- Limits: simple new cockpit geometry, finite-depth HUD, keyboard/gamepad input only. Headset comfort, scale, instrument readability and sustained in-flight performance require U-VR; no claim of completed visual validation.

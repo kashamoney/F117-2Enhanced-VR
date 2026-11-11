@@ -13,6 +13,10 @@
 #include "enhanced/interp.h"
 #include "enhanced/mapmfd.h"
 #include "enhanced/record.h"
+#include "enhanced/vr.h"        /* ENH: stereo views reuse the saved pre-render image */
+#include "enhanced/hr.h"
+#include "render3d/r3d.h"
+#include "prog.h"
 #include "host.h"
 #include "enhanced/wide.h"
 #include "gen/module_simflow.h"
@@ -545,6 +549,7 @@ void enh_display_wait(u64 dl)
 void enh_frame_end(void)
 {
     if (enh_sbx) return;
+    vr_scene_check();                                        /* ENH: offline stereo / state-restoration integration test */
     if (stream && img_a.valid && frame_refreshes == 0) refresh(alpha_at(dclock()), true);   /* no time in the wait (or no wait): one refresh */
     if (!stream) stream_show = false;                         /* a live frame (or --fps off): from its flip on the presenter shows the live page */
     if (deadline_set && host_ticks() > deadline_tick) n_steps_late++;
@@ -583,6 +588,60 @@ int enh_display_take(u32 *out)
 }
 
 bool enh_display_ready(void) { return stream_show && disp_new; }
+
+/* ENH: VR eye passes use one interpolated simulation image for both eyes. No game step,
+ * keyboard polling, file I/O or sound is allowed in this scope. The canvas and every
+ * registered engine region are restored even though the original renderer has side effects. */
+bool enh_vr_ready(void)
+{
+    return !enh_sbx && img_a.valid && enh_canvas_active() && !enh_compose_menu()
+        && prog_current_id() == PROG_VGAME;
+}
+static double vr_alpha;
+void enh_vr_frame(void) { vr_alpha = alpha_at(dclock()); }
+bool enh_vr_render(const VrPose *eye, u32 *out, int w, int h)
+{
+    if (!enh_vr_ready() || w != enh_cv.lw || h != enh_cv.lh) return false;
+    if (!image_save(&img_live) || !enh_canvas_snap_copy(&cv_scratch, &img_a.cv)) return false;
+    enh_canvas_snap_swap(&cv_scratch);
+    image_load(&img_a);
+    enh_sbx = true;
+    enh_interp_apply(vr_alpha);
+    const int heading = DSW(0x2DEE), pitch = DSW(0x2DF0), roll = DSW(0x2DF2);
+    int ch, cp, cr;
+    vr_camera(eye, heading, pitch, roll, &ch, &cp, &cr);
+    vr_eye_begin(eye, heading, pitch, roll);
+    DSW(0xC07A) = 0x44; DSW(0x365E) = 0; DSB(0x294B) = 0;
+    DSW(0xE44C) = (u16)ch; DSW(0xC07C) = (u16)cp; DSW(0xB770) = (u16)cr;
+    DSL(0xB288) = DSL(0xBA10); DSL(0xB752) = DSL(0xC02A); DSW(0xB75C) = DSW(0x2DF4);
+    sim_matrix_from_angles(0xB156, ch, cp, cr);
+    enh_set_view(0x44);
+    enh_cv.fx = (w - 320 * enh_cv.n) / 2;
+    enh_cv.fy = (h - 200 * enh_cv.n) / 2;
+    enh_cv.vx = enh_cv.vy = 0; enh_cv.vw = w; enh_cv.vh = h;
+    enh_wide_pass = true;
+    r3d_scene_draw(-ch, cp, cr, DSSL(0xBA10), DSSL(0xC02A), DSS(0x2DF4), 0, 0, 320, 200);
+    u8 dac[768]; u32 pal[256];
+    dac_get(0, 256, dac);
+    for (int i = 0; i < 256; i++) {
+        u32 r = dac[3*i], g = dac[3*i+1], b = dac[3*i+2];
+        pal[i] = (((r << 2) | (r >> 4)) << 16) | (((g << 2) | (g >> 4)) << 8) | (b << 2) | (b >> 4);
+    }
+    enh_compose_work(out, seg_ptr(enh_hr.seg), pal, true);
+    vr_eye_end();
+    enh_wide_on = enh_wide_pt = enh_wide_pass = false;
+    enh_sbx = false;
+    image_load(&img_live);
+    enh_canvas_snap_swap(&cv_scratch);
+    if (vr_options.scene_test[0]) {                           /* ENH: compare actual engine regions after every tested eye */
+        const u8 *saved = img_live.buf;
+        for (int i = 0; i < nreg; i++) {
+            if (memcmp(saved, reg[i].p, reg[i].n)) { fprintf(stderr, "VR eye leaked engine state in region %d\n", i); exit(3); }
+            saved += reg[i].n;
+        }
+    }
+    return true;
+}
 
 /* The test view of --sandbox-test: pass v of a frame looks from another place and heading than the canonical frame (v x 5.6 degrees,
  * v x 96 / 64 world units), so that its pictures, designators, tracer hits and driver state really differ from the frame's and any of
