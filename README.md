@@ -75,14 +75,13 @@ The default game folder is `../F117-Enhanced-play/Game` in this workspace. Origi
 stay separate from the source and the game saves your pilot roster in that working copy.
 Run **`Preview-VR.cmd`** for a desktop stereo preview without a headset.
 The desktop mirror shows the two square eye images side by side.
-The default world source is now **4096x4096 per eye**, twice the width and height of
-the previous 2048 setting (four times its source pixels). The live panel/HUD texture
-retains the enhanced 4x rendering at 1280x800. VR defaults to fine dithering, so shaded
-faces use the higher-resolution pixel grid instead of large checkerboard cells based
-on the original 320x200 image. Pass `--dither grid` directly to the executable to restore
-the coarse pattern. Original bitmap artwork keeps its original
-detail, while vector instruments and the 3D world can render more sharply. The desktop
-mirror window stays at 1024x1024 independently of the eye source resolution.
+The world now renders on the GPU at the headset's recommended eye resolution
+(**1716x1868 per eye** on this Odyssey+/Oasis setup), with 4x antialiasing where supported.
+The live panel/HUD texture retains enhanced 4x rendering at 1280x800. VR defaults to
+fine dithering; pass `--dither grid` directly to the executable to restore the coarse
+original checkerboard. Original bitmap artwork keeps its original detail, while vector
+instruments and the 3D world can render more sharply. The desktop mirror stays at
+1024x1024 independently of the eye resolution.
 
 For a first headset test, **`Carrier-VR.cmd`** prepares a separate practice copy with a test
 pilot and automatically navigates setup/briefing to a Libya carrier mission. Allow the intro
@@ -127,19 +126,37 @@ The build copies SDL/OpenXR/compiler runtime DLLs beside the executable.
 Advanced launch options:
 
 ```powershell
-.\tools\Start-VR.ps1 -Resolution 768 -WorldScale 1.0 -DumpEyes
+.\tools\Start-VR.ps1 -Resolution 2160 -WorldScale 1.0
 .\tools\Start-VR.ps1 -GameDirectory 'D:\Games\F117'
 ```
 
-`--vr-resolution 640..4096` sets each software-rendered eye image (default 4096).
-The headset submission targets use OpenXR's recommended sizes. Lower the software
-resolution if frame times are too high; this is a CPU software renderer, and a fast GPU
-does not guarantee native headset frame rate. `--vr-world-scale 0.1..10` sets physical
-metres per game metre; default 1.0 uses the original 512 km theatre / 0x100000 world-unit
-mapping (about 0.488 m per renderer unit). The game's exaggerated vertical scale and
-high-altitude compression are preserved, so HUD altitude is not a literal VR ruler.
+World polygons now rasterise on the GPU directly at the OpenXR eye target, with 4x
+MSAA where supported. The default `-Resolution 0` uses the runtime recommendation
+(on this Odyssey+/Oasis setup: **1716x1868 per eye**). A nonzero `-Resolution`, or
+`--vr-resolution 640..4096`, sets the actual eye **height** and preserves the runtime's
+width/height ratio. For example, `-Resolution 2160` increases GPU sampling without
+increasing the CPU instrument canvas. Desktop preview defaults to 1920x1920 per eye.
+The desktop mirror stays 1024x1024 and the original live panel/HUD stays 1280x800.
+
+The previous 4096-square software source was a workaround: the headset sampled only
+part of that image, and two full 32-bit images were uploaded every frame. The GPU
+path sends original geometry and a palette instead. No original assets or flight
+rules change. The original palette AND/OR operations and stippled faces are retained
+in an integer GPU target before colour conversion and antialiasing.
+
+`-Software` / `--vr-software` keeps the old software eye path for comparison; its
+resolution remains a square source size (2048 if unspecified). The optional desktop
+`--smooth-shading` and `--true-night` effects also select that fallback, because their
+per-pixel enhancement planes are not implemented by the GPU backend. Normal game
+night palettes work in the GPU path.
+
+`--vr-world-scale 0.1..10` sets physical metres per game metre; default 1.0 uses the
+original 512 km theatre / 0x100000 world-unit mapping (about 0.488 m per renderer unit).
+The game's exaggerated vertical scale and high-altitude compression are preserved,
+so HUD altitude is not a literal VR ruler.
 `--vr-no-cockpit` starts with the cockpit hidden. `--classic` disables VR.
-`--vr-dump` writes the first pair of software world images to the working directory.
+`--vr-dump` writes the first pair of eye images, the GPU cockpit mirror, and matched-projection
+GPU/software reference images to the working directory (one-time readback; leave it off while benchmarking).
 Session logs are in `work/vr-session/f117-vr.log`; original crash logs remain beside the exe.
 
 Implementation and current limits:
@@ -171,18 +188,36 @@ eye poses, physical stereo disparity and head rotation, and compares engine hash
 the final pilot roster against a run with VR rendering off. Images/logs are saved under
 `work/vr-check/`. `--vr-selftest` checks pose math without game files or a headset.
 Add `--preview-smoke` to exercise the native D3D11 presenter in a hidden test window and save `vr-mirror.png` with
-the GPU-rendered cockpit. In this workspace the 43 regression checks, stereo integration
-and native preview have passed; a live Odyssey+/Oasis carrier scene also submits at about
-90 frames/s at the initial 1024-per-eye setting. Visual comfort/readability and performance in flight
-remain user checks.
-To restore that lower-cost setting, use `tools/Start-VR.ps1 -Resolution 1024` (or add
-`-CarrierPractice` for the separate training pilot), or use `-Resolution 2048` for the
-previous quality setting. The earlier frame-rate observations were made on a shared
-desktop; the user reports another GPU workload may have affected them and that the game
-feels smooth. They are not isolated benchmark limits. Full-world eye passes reuse scratch layers instead of
-copying large pixel planes that the next render immediately overwrites; this optimization
-was checked to produce exactly the same world images.
-The integration tool accepts `--resolution 1024`, `2048`, or `4096` (default).
+the GPU-rendered cockpit. The scene check also exercises GPU geometry capture across stereo,
+yaw, pitch and roll, checks exact repeated-pose geometry/palette, and audits engine restoration
+throughout the mission. The integration tool accepts `--resolution 1024`, `2048`, or `4096`;
+use 1024 for a faster software reference check.
+
+A reproducible local performance check uses a hidden D3D11 preview and a disposable carrier
+mission (no pilot changes):
+
+```powershell
+python tools/benchmark_vr.py --exe f117port/build-vr/f117-enhanced-vr.exe --game-dir ../F117-Enhanced-play/Game
+```
+
+It measures 30 stereo frames after warmup, including render/upload/GPU completion, against an
+11.11 ms (90 Hz) budget. `--resolution 2160` raises actual eye height; `--software --resolution 4096`
+exercises the old source-image pipeline. `--headset` runs against OpenXR; the benchmark excludes frame waiting and tracking lookup.
+Use SteamVR frame timing to check delivery and missed display frames. Measurements exclude
+mission boot; sustained comfort and performance in other missions remain headset checks.
+Current local carrier measurements on the Odyssey+/Oasis: **1716x1868 per eye, 4x MSAA,
+4.23 ms average render/upload work, 87.6 submitted frames/s over 900 measured frames**
+after runtime warmup. The old 4096-square software path measured 76.68 ms of work per
+stereo frame. Mean upload falls from about 128 MiB to 3.9 MiB per frame. These are local
+measurements; startup, other workloads, and mission complexity can affect delivery.
+The GPU/software image comparison (`--validate`, requires NumPy/Pillow) checks forward,
+yaw, pitch and roll at matching projections. Headset comfort and sustained flight are
+still user checks. To measure the actual runtime with a longer warmup:
+
+```powershell
+python tools/benchmark_vr.py --exe f117port/build-vr/f117-enhanced-vr.exe --game-dir ../F117-Enhanced-play/Game --headset --frames 900
+```
+
 VR-enabled builds now produce `f117port/build-vr/f117-enhanced-vr.exe`. The launch scripts
 select this executable; an already running older build picks up the changes on relaunch.
 

@@ -1,3 +1,4 @@
+#include "enhanced/vr_gpu.h"
 /* The sandboxed display pass (sandbox.h; DESIGN.md 4.1, 4.2, 4.7; S2.4). */
 #include "enhanced/sandbox.h"
 
@@ -620,14 +621,17 @@ bool enh_vr_render(const VrPose *eye, u32 *out, int w, int h)
     enh_cv.fy = (h - 200 * enh_cv.n) / 2;
     enh_cv.vx = enh_cv.vy = 0; enh_cv.vw = w; enh_cv.vh = h;
     enh_wide_pass = true;
+    if (vr_gpu_active()) enh_stamp_hold++;                  /* GPU sprites/bands do not need software fallback blocks */
     r3d_scene_draw(-ch, cp, cr, DSSL(0xBA10), DSSL(0xC02A), DSS(0x2DF4), 0, 0, 320, 200);
+    if (vr_gpu_active()) enh_stamp_hold--;
     u8 dac[768]; u32 pal[256];
     dac_get(0, 256, dac);
     for (int i = 0; i < 256; i++) {
         u32 r = dac[3*i], g = dac[3*i+1], b = dac[3*i+2];
         pal[i] = (((r << 2) | (r >> 4)) << 16) | (((g << 2) | (g >> 4)) << 8) | (b << 2) | (b >> 4);
     }
-    enh_compose_work(out, seg_ptr(enh_hr.seg), pal, true);
+    if (vr_gpu_active()) vr_gpu_palette(pal);
+    else enh_compose_work(out, seg_ptr(enh_hr.seg), pal, true);
     vr_eye_end();
     enh_wide_on = enh_wide_pt = enh_wide_pass = false;
     enh_sbx = false;

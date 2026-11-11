@@ -4,7 +4,8 @@ param(
     [switch]$Diagnostic,
     [switch]$DumpEyes,
     [switch]$CarrierPractice,
-    [ValidateRange(640,4096)][int]$Resolution = 4096,
+    [ValidateRange(0,4096)][int]$Resolution = 0,
+    [switch]$Software,
     [ValidateRange(0.1,10)][double]$WorldScale = 1.0,
     [string]$GameDirectory
 )
@@ -18,6 +19,8 @@ if (-not $GameDirectory) { $GameDirectory = Join-Path (Split-Path -Parent $repoP
 $sessionPath = Join-Path $repoPath 'work\vr-session'
 New-Item -ItemType Directory -Path $sessionPath -Force | Out-Null
 $gameArgs = @('--vr-resolution', $Resolution.ToString(), '--vr-world-scale', $WorldScale.ToString([Globalization.CultureInfo]::InvariantCulture))
+if ($Resolution -gt 0 -and $Resolution -lt 640) { throw 'Resolution must be 0 (native) or 640..4096 pixels high per eye.' }
+if ($Software) { $gameArgs += '--vr-software' }
 if ($Diagnostic) {
     $gameArgs += '--vr-diagnostic'
 } else {

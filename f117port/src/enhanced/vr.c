@@ -2,6 +2,7 @@
 #include "enhanced/vr.h"
 #include "enhanced/enhanced.h"
 #include "enhanced/enh_canvas.h"
+#include "enhanced/vr_gpu.h"
 #include "mem.h"
 #include <math.h>
 #include <stdio.h>
@@ -11,7 +12,7 @@
 
 #define VR_PI 3.14159265358979323846
 #define VR_METRES_PER_UNIT (512000.0 / 1048576.0)
-VrOptions vr_options = { .resolution = 4096, .world_scale = 1.0, .cockpit = true };
+VrOptions vr_options = { .resolution = 0, .world_scale = 1.0, .cockpit = true };
 static bool eye_active;
 static double eye_delta[3], object_units = 1.0, queued_units[50];
 
@@ -24,6 +25,8 @@ int vr_parse_arg(int argc, char **argv, int i)
     if (!strcmp(a, "--vr-selftest")) { vr_options.selftest = true; return 1; }
     if (!strcmp(a, "--vr-no-cockpit")) { vr_options.cockpit = false; return 1; }
     if (!strcmp(a, "--vr-dump")) { vr_options.dump = true; return 1; }
+    if (!strcmp(a, "--vr-software")) { vr_options.software = true; return 1; }
+    if (!strcmp(a, "--vr-gpu-check")) { vr_options.gpu_check = true; return 1; }
     if (!strcmp(a, "--vr-scene-test") && i + 1 < argc) {
         if (strlen(argv[i+1]) >= sizeof vr_options.scene_test) { fputs("VR test path too long\n", stderr); exit(2); }
         strcpy(vr_options.scene_test, argv[i+1]); vr_options.mode=3; return 2;
@@ -32,8 +35,8 @@ int vr_parse_arg(int argc, char **argv, int i)
         char *end;
         double n = strtod(argv[i + 1], &end);
         bool res = !strcmp(a, "--vr-resolution");
-        if (end == argv[i+1] || *end || !isfinite(n) || n < (res ? 640 : 0.1) || n > (res ? 4096 : 10) || (res && n != floor(n))) {
-            fprintf(stderr, "%s: expected %s\n", a, res ? "integer 640..4096" : "number 0.1..10");
+        if (end == argv[i+1] || *end || !isfinite(n) || n < (res ? 0 : 0.1) || (res && n>0 && n<640) || n > (res ? 4096 : 10) || (res && n != floor(n))) {
+            fprintf(stderr, "%s: expected %s\n", a, res ? "0 (native) or integer 640..4096" : "number 0.1..10");
             exit(2);
         }
         if (res) vr_options.resolution = (int)n; else vr_options.world_scale = n;
@@ -42,7 +45,11 @@ int vr_parse_arg(int argc, char **argv, int i)
     return 0;
 }
 bool vr_enabled(void) { return vr_options.mode && enh_canvas_on(); }
+bool vr_use_gpu(void) { return !vr_options.software && vr_options.mode!=3 && !enh.smooth_shading && !enh.true_night; }
+int vr_canvas_resolution(void) { return vr_use_gpu()?1280:(vr_options.resolution?vr_options.resolution:2048); }
+int vr_canvas_height(void) { return vr_use_gpu()?800:vr_canvas_resolution(); }
 bool vr_eye_active(void) { return eye_active; }
+double vr_near_depth(void) { return 0.03*0.5*object_units/(VR_METRES_PER_UNIT*vr_options.world_scale); }
 VrQuat vr_multiply(VrQuat a, VrQuat b)
 {
     return (VrQuat){a.w*b.x+a.x*b.w+a.y*b.z-a.z*b.y,
@@ -122,10 +129,14 @@ void vr_capture_desktop(const uint32_t *src,int w,int h,uint32_t *out,int scale)
 {
     const int ow=320*scale,oh=200*scale;
     const bool canvas=enh_canvas_active() && w==enh_cv.lw && h==enh_cv.lh;
-    for(int y=0;y<oh;y++) for(int x=0;x<ow;x++) {
-        int sx=canvas?enh_cv.fx+x*enh_cv.n/scale:x*w/ow;
-        int sy=canvas?enh_cv.fy+y*enh_cv.n/scale:y*h/oh;
-        out[y*ow+x]=(sx>=0 && sx<w && sy>=0 && sy<h)?src[sy*w+sx]:0;
+    if(canvas && enh_cv.n==scale && enh_cv.fx>=0 && enh_cv.fy>=0 && enh_cv.fx+ow<=w && enh_cv.fy+oh<=h) {
+        for(int y=0;y<oh;y++)memcpy(out+(size_t)y*ow,src+(size_t)(enh_cv.fy+y)*w+enh_cv.fx,(size_t)ow*sizeof *out);
+    } else {
+        for(int y=0;y<oh;y++) for(int x=0;x<ow;x++) {
+            int sx=canvas?enh_cv.fx+x*enh_cv.n/scale:x*w/ow;
+            int sy=canvas?enh_cv.fy+y*enh_cv.n/scale:y*h/oh;
+            out[y*ow+x]=(sx>=0 && sx<w && sy>=0 && sy<h)?src[sy*w+sx]:0;
+        }
     }
     if (canvas && enh_vr_ready()) enh_vr_hud_alpha(out,scale);
 }
@@ -168,12 +179,41 @@ int vr_selftest(void)
     if(!fail) puts("vr-selftest OK");
     return fail?1:0;
 }
+static void gpu_scene_check(void)
+{
+    static unsigned checked;
+    VrGpuFrame a={0},b={0};
+    VrPose pose={{0,0,0,1},{-0.032,0,0}};
+    enh_vr_frame();
+    vr_gpu_begin(&a);bool ok=enh_vr_render(&pose,NULL,enh_cv.lw,enh_cv.lh);vr_gpu_end();
+    if(!ok||a.count<3||a.invalid){fprintf(stderr,"VR GPU scene invalid: %zu vertices, %u invalid faces\n",a.count,a.invalid);exit(3);}
+    if(checked==0) {
+        for(int k=0;k<5;k++) {
+            pose.orientation=(VrQuat){k==3?sin(0.3):0,k==2?sin(0.25):0,k==4?sin(0.6):0,
+                k==3?cos(0.3):k==2?cos(0.25):k==4?cos(0.6):1};
+            pose.position[0]=k?0.032:-0.032;
+            vr_gpu_begin(&b);ok=enh_vr_render(&pose,NULL,enh_cv.lw,enh_cv.lh);vr_gpu_end();
+            bool equal=a.count==b.count&&!memcmp(a.vertices,b.vertices,a.count*sizeof *a.vertices);
+            if(!ok||b.invalid||(k==0?!equal:equal)){fputs("VR GPU pose or topology check failed\n",stderr);exit(3);}
+        }
+        pose=(VrPose){{0,0,0,1},{-0.032,0,0}};
+        vr_gpu_begin(&b);ok=enh_vr_render(&pose,NULL,enh_cv.lw,enh_cv.lh);vr_gpu_end();
+        if(!ok||a.count!=b.count||memcmp(a.vertices,b.vertices,a.count*sizeof *a.vertices)||
+           a.batch_count!=b.batch_count||memcmp(a.batches,b.batches,a.batch_count*sizeof *a.batches)||memcmp(a.palette,b.palette,sizeof a.palette)) {
+            fputs("VR GPU geometry retained another pose's state\n",stderr);exit(3);
+        }
+        printf("vr-gpu-scene OK: stereo, yaw, pitch, roll, repeated-pose geometry and palette exact; engine restored\n");
+    }
+    checked++;vr_gpu_free(&a);vr_gpu_free(&b);
+}
 void vr_scene_check(void)
 {
     static bool done;
-    if (!vr_options.scene_test[0] || done || !enh_vr_ready()) return;
+    if (!vr_options.scene_test[0] || !enh_vr_ready()) return;
+    if(vr_options.gpu_check)gpu_scene_check();
+    if(done)return;
     done=true;
-    const int size=vr_options.resolution;
+    const int size=vr_canvas_resolution();
     const size_t bytes=(size_t)size*size*sizeof(u32);
     u32 *a=malloc(bytes),*b=malloc(bytes),*c=malloc(bytes);
     if(!a || !b || !c) { fputs("VR scene test allocation failed\n",stderr); exit(3); }
@@ -208,7 +248,7 @@ void vr_scene_check(void)
 #ifndef F117_OPENXR
 bool vr_start(void *w) { (void)w; fprintf(stderr,"VR support was not built. Configure with -DF117_OPENXR=ON.\n");return false; }
 void vr_stop(void) {}
-void vr_tick(const uint32_t *p,int w,int h) {(void)p;(void)w;(void)h;}
+void vr_tick(const uint32_t *p,int w,int h,bool changed) {(void)p;(void)w;(void)h;(void)changed;}
 bool vr_key(int sc,bool down,bool rep) {(void)sc;(void)down;(void)rep;return false;}
 bool vr_wants_quit(void) {return false;}
 int vr_diagnostic(void) {return vr_start(NULL)?0:1;}

@@ -63,7 +63,7 @@ static int usage(const char *prog)
             "usage: %s [--game-dir DIR] [--scale N] [--aspect 4:3|1:1] [--fullscreen] [--headless]\n"
             "          [--trace] [--check] [--chain-test] [--tick-test [MS]]\n"
             "          [--keys NAME=CODE,...] [--keymap-test] [--frame-ticks N] [--version] [--classic]\n"
-            "          [--vr|--vr-preview] [--vr-resolution 640..4096] [--vr-world-scale 0.1..10]\n"
+            "          [--vr|--vr-preview] [--vr-resolution 0|640..4096] [--vr-software] [--vr-world-scale 0.1..10]\n"
             "          [--vr-no-cockpit] [--vr-dump] [--vr-diagnostic] [--vr-selftest]\n"
             "          [--render-scale N] [--wide] [--no-wide] [--smooth-shading] [--true-night] [--fps vsync|60|30|off]\n"
             "          [--compose-test] [--interp-test]   (Enhanced)\n", prog);
@@ -148,11 +148,11 @@ int main(int argc, char **argv)
     enh_env_args();                                            /* ENH: S2.4, F117_ENH_ARGS before anything runs (--sandbox-hash sees the whole chain) */
     if (vr_options.selftest) return vr_selftest();              /* ENH: no runtime or game files required */
     if (vr_options.diagnostic) return vr_diagnostic();
-    if (vr_enabled()) {                                       /* ENH: fixed square eye canvas, unthrottled headset presentation */
+    if (vr_enabled()) {                                       /* ENH: instrument canvas independent of GPU eye targets; headset presentation owns pacing */
         if (vr_options.mode == 3) cfg.headless = true;
         if (cfg.headless && vr_options.mode != 3) { fprintf(stderr, "VR requires a window; use --vr-selftest for headless checks.\n"); return 2; }
         cfg.aspect_4_3 = false;
-        enh.render_scale = vr_options.resolution / 1024 > 0 ? vr_options.resolution / 1024 : 1;
+        enh.render_scale = vr_use_gpu()?4:(vr_canvas_resolution()/1024>0?vr_canvas_resolution()/1024:1);
         if (!enh.dither_explicit) enh.dither_fine = true; /* ENH: checkerboard shading follows the finer eye pixels */
         enh.wide = true; enh.fps = 0;
     }

@@ -8,6 +8,7 @@
 #include "enhanced/sandbox.h"      /* ENH: S2.4 */
 #include "enhanced/wide.h"         /* ENH: S3.4 */
 #include "enhanced/vr.h"           /* ENH: fractional eye translation inside saved-state passes */
+#include "enhanced/vr_gpu.h"       /* ENH: wire edges outside the original narrow viewport */
 
 #define BANK()  DSW(0x8560)
 #define ESW(o)  rd16(BANK(), (u16)(o))
@@ -415,6 +416,7 @@ void r3d_face_list(u16 si)
                 si = (u16)(si + 1);
                 DSW(0x7D4E) = r;
                 if (!(DSB((u16)(r + 2)) & 0x80)) gfxlib_dispatch_b(r);
+                else if (vr_gpu_active()) hr_line(r); /* ENH: the GPU clips the original edge to the headset FOV */
             } while (--n);
             continue;
         }

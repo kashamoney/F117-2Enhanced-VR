@@ -118,7 +118,7 @@ bool host_init(const HostConfig *cfg)
     frame_reserve(HOST_FRAME_MAX_W, HOST_FRAME_MAX_H);
     nominal_w = 320 * (cfg->scale < 1 ? 3 : cfg->scale);
     nominal_h = (aspect43 ? 240 : 200) * (cfg->scale < 1 ? 3 : cfg->scale);
-    if (vr_enabled()) nominal_w = nominal_h = vr_options.resolution; /* ENH: same canvas for offline and headset eye passes */
+    if (vr_enabled()) { nominal_w=vr_canvas_resolution();nominal_h=vr_canvas_height(); } /* ENH: CPU instrument canvas independent of GPU eye targets */
     { const char *w = SDL_getenv("F117_WINDOW"); int ww, wh;   /* ENH: S3.4 test aid, the window size a headless run pretends to have (WxH) */
       if (w && SDL_sscanf(w, "%dx%d", &ww, &wh) == 2 && ww >= 320 && wh >= 200 && ww <= 8192 && wh <= 8192) { nominal_w = ww; nominal_h = wh; } }
     { const char *v = SDL_getenv("F117_VCLOCK"); vclock = v && *v && *v != '0'; }   /* ENH: S2.4 */
@@ -132,10 +132,10 @@ bool host_init(const HostConfig *cfg)
         return false;
     }
     int scale = cfg->scale < 1 ? 3 : cfg->scale;
-    if (!SDL_CreateWindowAndRenderer("F-117A Nighthawk Stealth Fighter 2.0", vr_enabled() ? SDL_min(vr_options.resolution,1024) : 320 * scale,
-                                     vr_enabled() ? SDL_min(vr_options.resolution,1024) : (aspect43 ? 240 : 200) * scale,
-                                     vr_enabled() ? (vr_options.mode==2 && SDL_getenv("F117_VR_PREVIEW_HIDDEN") ? SDL_WINDOW_HIDDEN : 0)
-                                                  : SDL_WINDOW_RESIZABLE, &window, &renderer)) { /* ENH: fixed eye canvas; optional hidden GPU test */
+    if (!SDL_CreateWindowAndRenderer("F-117A Nighthawk Stealth Fighter 2.0", vr_enabled() ? SDL_min(vr_canvas_resolution(),1024) : 320 * scale,
+                                     vr_enabled() ? SDL_min(vr_canvas_resolution(),1024) : (aspect43 ? 240 : 200) * scale,
+                                     vr_enabled() ? (SDL_getenv("F117_VR_PREVIEW_HIDDEN") && (vr_options.mode==2 || SDL_getenv("F117_VR_BENCHMARK")) ? SDL_WINDOW_HIDDEN : 0)
+                                                  : SDL_WINDOW_RESIZABLE, &window, &renderer)) { /* ENH: fixed mirror; optional hidden GPU test */
         fprintf(stderr, "window/renderer failed: %s\n", SDL_GetError());
         return false;
     }
@@ -212,7 +212,7 @@ static void canvas_sync(void)
     if (!enh_canvas_active()) return;
     int ww = nominal_w, wh = nominal_h;
     if (window && !headless) SDL_GetWindowSizeInPixels(window, &ww, &wh);
-    if (vr_enabled()) ww=wh=vr_options.resolution;    /* ENH: eye resolution is independent of the desktop mirror's size */
+    if (vr_enabled()) { ww=vr_canvas_resolution();wh=vr_canvas_height(); } /* ENH: instrument canvas is independent of the desktop mirror's size */
     enh_canvas_update(ww, wh, aspect43);
     if (enh_present_hold()) return;                       /* ENH: S3.4 fix 4, the last picture stays on screen until the new view's first frame */
     if (enh_cv.lw != frame_w || enh_cv.lh != frame_h) { host_resize_frame(enh_cv.lw, enh_cv.lh); repaint = true; }
@@ -433,10 +433,12 @@ void host_pump(void)
         }
     }
 
+    bool desktop_changed=false;                     /* ENH: unchanged VR instruments stay on the GPU */
     /* Present at most once per ~8 ms; VSync paces it further. */
     if (frame_source && (now - last_present_ns >= 8 * SDL_NS_PER_MS || enh_display_ready())) {   /* ENH: S4.1, a display pass's picture at once */
         canvas_sync();                              /* ENH: the canvas follows the window */
         const bool changed = frame_source(frame);
+        desktop_changed=changed;                    /* ENH: update the VR panel only when composed content changes */
         if (!changed) snapshot_static();
         if (changed || repaint) {
             repaint = false;
@@ -445,7 +447,7 @@ void host_pump(void)
             worked = true;
         }
     }
-    if (vr_enabled()) vr_tick(frame, frame_w, frame_h); /* ENH: also runs on static menus and while paused */
+    if (vr_enabled()) vr_tick(frame, frame_w, frame_h, desktop_changed); /* ENH: also runs on static menus and while paused */
     if (!worked && !vclock) {                       /* ENH: S2.4, the virtual clock never sleeps */
         Uint64 next = tick_due_ns(ticks_run + 1);
         now = SDL_GetTicksNS();

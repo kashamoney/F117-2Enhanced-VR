@@ -1,3 +1,4 @@
+#include "enhanced/vr_gpu.h"
 /* The hr copy of render3d/edge2d.c (VGAME 1001: clip core, edge tables, polygon fill) and of the sky / ground backdrop 1442
  * (render3d/r3d_sky.c, hz_draw), for the backdrop of a 3D pass (DESIGN.md 2.2, 2.3). Coordinates are window-relative as in 1001
  * (layer = ox + x, oy + y); XMAX / YMAX are N W - 1 / N H - 1; tables have YMAX + 1 rows (int32, L idle INT32_MAX, R idle 0).
@@ -233,6 +234,7 @@ static void fill(u8 c)
 
 static void poly_fill_hr(int n, const s64 *pts, u8 colour)
 {
+    if (vr_gpu_active()) { vr_gpu_poly2d(n,pts,colour); return; }
     if (hr_tracing) hr_trace_poly(enh_hr.ox, enh_hr.oy, colour, n, pts);
     e2_tables_clear();
     sg.x1 = pts[0]; sg.y1 = pts[1];
@@ -354,6 +356,9 @@ static void hz_draw_hr(void)
         }
     }
     u8 colour = DSB(0x0D46);
+    if (vr_gpu_active()) {
+        vr_gpu_horizon(pt[0],pt[1],pt[2],pt[3],colour,(s16)DSW(0x498C)<0);return;
+    }
     e2_tables_clear();
     sg.x1 = pt[0]; sg.x2 = pt[2]; sg.y2 = pt[3]; sg.y1 = pt[1];
     ClipOut o;
@@ -399,7 +404,7 @@ static void hz_draw_hr(void)
 void hr_sky_ground(void *ctx)
 {
     (void)ctx;
-    if ((u16)seg_get() != enh_hr.seg) return;           /* 1001 draws on MGRAPHIC's current page (the TV camera's may be another): stamped */
+    if (!vr_gpu_active() && (u16)seg_get() != enh_hr.seg) return; /* GPU bands need no MGRAPHIC page binding; software 1001 may draw on another page */
     if (!tabs_ready()) return;
     s16 cB = (s16)DSW(0x4988);
     if (cB < 0x200) cB = 0x200;

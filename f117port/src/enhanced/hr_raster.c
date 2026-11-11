@@ -1,3 +1,4 @@
+#include "enhanced/vr_gpu.h"
 /* The hr copy of render3d/r3d_raster.c (VGAME 1359, mode M; DESIGN.md 2.2, 2.4): the same integer edge DDA, walls, span fill and
  * Bresenham line on layer coordinates (int32), into the 3D layer. Row tables have Lh rows; the sentinels 7FFFh / 8001h become
  * INT32_MAX / INT32_MIN + 1. The colour word is the faithful one (DS:85D6 after r3d_setcolor_M, read only).
@@ -324,6 +325,7 @@ static void brush(s32 x, s32 y, u8 c)
 
 void hr_draw_line(s32 bx, s32 di, s32 bp, s32 cx, u8 c)
 {
+    if (vr_gpu_active()) { vr_gpu_line2d(bx,di,bp,cx,c); return; }
     if (hr_tracing) { s32 t[7] = { bx, di, bp, cx, c, enh_hr.line_w, enh_hr.line_o }; hr_trace(4, 7, t); }
     s32 ady = cx - di, adx = bp - bx, t;
     if (ady < 0) ady = -ady;

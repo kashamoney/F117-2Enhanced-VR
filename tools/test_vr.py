@@ -55,7 +55,7 @@ def run(exe: Path, game: Path, directory: Path, stereo: bool, preview: bool = Fa
                "--dither", "fine",
                "--sandbox-hash", str(directory / "hash.txt")]
     if stereo:
-        command += ["--vr-scene-test", str(directory)]
+        command += ["--vr-scene-test", str(directory), "--vr-gpu-check"]
     if preview:
         command.remove("--headless")
         command += ["--vr-preview", "--vr-dump"]

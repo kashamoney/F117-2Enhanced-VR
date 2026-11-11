@@ -1,3 +1,4 @@
+#include "enhanced/vr_gpu.h" /* ENH: saved-state GPU eye pass */
 /* 0000:1442 r3d_draw_sky_ground (spec render3d.md Part 6 section B; the Python reference is sky_ground() of port/notes/s37/R7c_ref.py). Below detail 3 the flat two-colour
  * split of hz_fill_far; otherwise 16 sky bands (colours 80h + i, horizon first) and 16 ground bands (70h + i), each a quadrilateral far outside the screen horizontally
  * that poly_fill_far clips. In the TV camera picture in mono mode (flag) the bands are 88h / 7Ch. */
@@ -41,6 +42,10 @@ void r3d_draw_sky_ground(void *ctx)
     DSW(0x98E4) = DSW(0x498C);
     DSW(0x98F8) = DSW(0x4986);
     DSW(0x9F12) = DSW(0x4988);
+    if (vr_gpu_active()) { /* ENH: retain the low-detail sky colour without drawing unused software spans */
+        if ((s8)DSB(0x98DE)<3) DSB(0x0D46)=((u8 *)ctx)[4];
+        hr_sky_ground(ctx);return;
+    }
     if ((s8)DSB(0x98DE) < 3) { hz_fill_far(((u8 *)ctx)[4] | ((u8 *)ctx)[5] << 8); ENH_HR(hr_sky_ground(ctx)); return; }   /* ENH: the hr backdrop */
     bool flag = DSW(0x4360) && DSW(0x43B2);
     for (int i = 0; i < 16; i++) DSW(0xC080 + 2 * i) = DSW(0x0D22 + 2 * i);          /* the sky offsets (initialised data) */

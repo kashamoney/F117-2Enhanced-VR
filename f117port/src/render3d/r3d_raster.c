@@ -1,3 +1,4 @@
+#include "enhanced/vr_gpu.h" /* ENH: saved-state GPU eye pass */
 /* VGAME segment 1359: the raster back end of the 3D renderer, mode M (MCGA, 320x200) only; the modes E / C / T of the library are dead in this game (spec render3d.md Part 5,
  * the Python reference is port/notes/s37/R7b_ref.py). A polygon is assembled in two row tables, edge_L (min x per row, idle 7FFFh) and edge_R (max x per row, idle 8001h)
  * with the first touched row in edge_miny; fill_M paints the spans and resets the rows it has visited (including the "gap row" behaviour: it stops at the first row whose L
@@ -191,6 +192,7 @@ void r3d_fill_M(void)
 void r3d_line_M(u16 rec)
 {
     ENH_HR(hr_line(rec));   /* ENH: the hr line */
+    if (vr_gpu_active()) return; /* ENH: avoid the unused 320x200 software line in a GPU eye pass */
     s16 bx = ER_S(rec, 0), di = ER_S(rec, 4), bp = ER_S(rec, 8), cx = ER_S(rec, 0xC), t;
     u16 ady = (u16)(cx - di), adx = (u16)(bp - bx);
     if ((s16)ady < 0) ady = (u16)-ady;

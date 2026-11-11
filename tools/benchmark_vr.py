@@ -1,0 +1,86 @@
+"""Benchmark the real stereo render/upload/GPU path in a hidden preview.
+
+Uses a disposable game copy and deterministic carrier mission; never changes the
+player's pilot. Excludes headset pacing, includes both eyes and the cockpit.
+"""
+import argparse
+import os
+from pathlib import Path
+import re
+import shutil
+import subprocess
+import uuid
+from test_vr import ROOT, roster
+
+
+def main():
+    p = argparse.ArgumentParser(description=__doc__)
+    p.add_argument('--exe', type=Path, required=True)
+    p.add_argument('--game-dir', type=Path, required=True)
+    p.add_argument('--resolution', type=int, default=0)
+    p.add_argument('--software', action='store_true')
+    p.add_argument('--headset', action='store_true')
+    p.add_argument('--validate', action='store_true', help='also compare GPU/software image interiors (requires numpy and Pillow)')
+    p.add_argument('--hz', type=float, default=90)
+    p.add_argument('--frames', type=int, default=30)
+    p.add_argument('--warmup', type=int, help='default 5 preview frames or 120 headset frames, allowing runtime pacing to settle')
+    a = p.parse_args()
+    if not 1 <= a.frames <= 900 or a.hz <= 0 or (a.warmup is not None and not 0 <= a.warmup <= 900):
+        p.error('Use 1..900 frames, a positive refresh rate, and 0..900 warmup frames')
+    if a.validate and a.software:
+        p.error('--validate requires the GPU renderer')
+    directory = ROOT / 'work/vr-benchmark' / uuid.uuid4().hex[:10]
+    game = directory / 'game'
+    game.mkdir(parents=True)
+    for source in a.game_dir.resolve().iterdir():
+        if source.is_file():
+            shutil.copy2(source, game / source.name)
+    (game / 'ROSTER.FIL').write_bytes(roster())
+    env = {k: v for k, v in os.environ.items() if not k.startswith('F117_')}
+    env.update(F117_KEYS='1:31,2:03,11:39', F117_VCLOCK='1',
+               F117_SHELL_SCRIPT=str(ROOT / 'port/notes/s54/shell_chain_libya.txt'),
+               F117_END_SCRIPT=str(ROOT / 'port/notes/s58/end_chain.txt'),
+               F117_VGAME_FRAMES='400', F117_VR_BENCHMARK='1', F117_VR_PREVIEW_HIDDEN='1',
+               F117_VR_BENCH_FRAMES=str(a.frames),
+               F117_VR_BENCH_WARMUP=str(a.warmup if a.warmup is not None else 120 if a.headset else 5))
+    if a.validate:
+        env['F117_VR_VALIDATE'] = '1'
+    cmd = [str(a.exe.resolve()), '--vr' if a.headset else '--vr-preview', '--vr-resolution', str(a.resolution),
+           '--game-dir', str(game), '--fps', 'off', '--dither', 'fine']
+    if a.software:
+        cmd += ['--vr-software']
+    if a.validate:
+        cmd += ['--vr-dump']
+    result = subprocess.run(cmd, cwd=directory, env=env, capture_output=True, text=True, timeout=120)
+    (directory / 'stdout.txt').write_text(result.stdout, encoding='utf-8')
+    (directory / 'stderr.txt').write_text(result.stderr, encoding='utf-8')
+    log = (directory / 'f117-vr.log').read_text(encoding='utf-8')
+    print(log)
+    print(f'Evidence: {directory}')
+    match = re.search(r'VR benchmark: \d+ stereo frames, ([\d.]+) ms/frame', log)
+    if result.returncode or not match:
+        raise RuntimeError(f'Benchmark failed ({result.returncode}): {result.stderr[-2000:]}')
+    if a.validate:
+        import numpy as np
+        from PIL import Image
+        for k, pose in enumerate(('forward', 'yaw', 'pitch', 'roll')):
+            reference = np.array(Image.open(directory / f'vr-software-reference-{k}.png').convert('RGB')).astype(int)
+            actual = np.array(Image.open(directory / f'vr-gpu-reference-{k}.png').convert('RGB')).astype(int)
+            interior = np.ones(reference.shape[:2], dtype=bool)
+            for axis in (0, 1):
+                for offset in (-2, -1, 1, 2):
+                    interior &= np.all(reference == np.roll(reference, offset, axis=axis), axis=2)
+            difference = np.max(abs(reference - actual), axis=2)
+            agreement = np.mean(difference[interior] <= 3)
+            print(f'Matched-projection {pose} interiors: {agreement:.3%} agree within 3/255 RGB')
+            if agreement < .98:
+                raise RuntimeError('GPU image differs materially from the original software scene')
+    ms = float(match[1])
+    if ms > 1000 / a.hz:
+        print(f'FAIL: {ms:.2f} ms exceeds {a.hz:g} Hz budget of {1000/a.hz:.2f} ms')
+        raise SystemExit(1)
+    print(f'PASS: {ms:.2f} ms within {a.hz:g} Hz rendering budget')
+
+
+if __name__ == '__main__':
+    main()

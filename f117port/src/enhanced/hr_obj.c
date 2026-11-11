@@ -18,6 +18,8 @@
 #include "enhanced/enh_canvas.h"
 #include "enhanced/hr.h"
 #include "enhanced/wide.h"
+#include "enhanced/vr_gpu.h"
+#define OBJ_N (vr_gpu_active()?enh_hr.n:enh_cv.n)
 #include "render3d/r3d.h"
 #include "gen/module_video.h"   /* offset_get */
 #include "video/video.h"
@@ -74,7 +76,7 @@ static s32 scale_eighths(int mode, s32 v)
 void enh_bill_size(int mode, int d)
 {
     if (d == 0) { enh_hr_pt.size = 0; return; }
-    s32 q = (s32)(0x100 * enh_cv.n) / (s16)d;
+    s32 q = (s32)(0x100 * OBJ_N) / (s16)d;
     enh_hr_pt.size = scale_eighths(mode, q < 0 ? -q : q);
 }
 
@@ -88,7 +90,7 @@ void enh_bill_note(void)
     bill[k].valid = enh_hr.on && enh_hr_pt.valid;
     bill[k].pt = enh_hr_pt;
     s16 size1 = (s16)DSW(0x496E);
-    bill[k].size = enh_hr_pt.size > 0 ? enh_hr_pt.size : (s32)size1 * enh_cv.n;
+    bill[k].size = enh_hr_pt.size > 0 ? enh_hr_pt.size : (s32)size1 * OBJ_N;
 }
 
 void enh_bill_pending(u16 rec)
@@ -104,7 +106,7 @@ void enh_expl_pending(int dep)
 {
     pend.valid = false;
     if (!enh_hr.have || !enh_hr_pt.valid || (s16)dep == 0) return;
-    s32 q = (s32)(0x100 * enh_cv.n) / (s16)dep;
+    s32 q = (s32)(0x100 * OBJ_N) / (s16)dep;
     pend.valid = true; pend.x = enh_hr_pt.x; pend.y = enh_hr_pt.y; pend.size = q < 0 ? -q : q;
 }
 
@@ -118,7 +120,7 @@ void enh_tv_sprite_pending(u16 rec, int size)
     hr_edge_point(rec, &x, &y);
     pend.valid = true;
     pend.x = x - enh_hr.wx + enh_hr.fx; pend.y = y - enh_hr.wy + enh_hr.fy;
-    pend.size = (s32)size * enh_cv.n;
+    pend.size = (s32)size * OBJ_N;
 }
 
 /* ---------------------------------------------------------------- sprites (1AD6 / 1A85) */
@@ -159,6 +161,19 @@ void enh_sprite_end(u16 off, u16 seg, int size)
     }
     /* the origin: the window's layer origin + the hr point - half the size (the 1x call is x - size / 2, y - dh / 2 inside the window) */
     const s32 x0 = sp_cur.x + (enh_hr.wx - enh_hr.fx) - dw / 2, y0 = sp_cur.y + (enh_hr.wy - enh_hr.fy) - dh / 2;   /* S3.4: wx, wy (= xmin, ymin but in a wide pass) */
+    if (vr_gpu_active()) {
+        for (unsigned r=0;r<sh;r++) {
+            const u8 *rec=rows[r];unsigned len=rec[0]|rec[1]<<8,lead=rec[2]|rec[3]<<8;
+            if(lead+len>sw)continue;
+            for(unsigned i=0;i<len;) {
+                unsigned end=i+1;u8 c=rec[4+i];while(end<len&&rec[4+end]==c)end++;
+                if(c)vr_gpu_rect(x0+(double)(lead+i)*dw/sw,y0+(double)r*dh/sh,
+                    x0+(double)(lead+end)*dw/sw,y0+(double)(r+1)*dh/sh,c);
+                i=end;
+            }
+        }
+        st.sprites++;return;
+    }
     static u8 rowbuf[0x400];
     long px = 0;
     if (hr_tracing) {                                 /* 7: x0 y0 dw dh sw sh and the source bitmap (sw sh words), for the reference */
@@ -208,8 +223,9 @@ void enh_dot_end(int colour)
     if (!dot_active) return;
     dot_active = false;
     enh_stamp_hold--;
-    const int n = enh_cv.n;
+    const int n = OBJ_N;
     const s32 x0 = enh_hr_pt.x - n / 2, y0 = enh_hr_pt.y - n / 2;
+    if (vr_gpu_active()) { vr_gpu_rect(x0,y0,x0+n,y0+n,(u8)colour);st.dots++;return; }
     if (hr_tracing) { s32 t[4] = { x0, y0, n, colour }; hr_trace(8, 4, t); }       /* 8: an N x N block */
     for (int ky = 0; ky < n; ky++)
         for (int kx = 0; kx < n; kx++) put3d(x0 + kx, y0 + ky, (u8)colour);
@@ -311,6 +327,7 @@ static void vbres(s32 x1, s32 y1, s32 x2, s32 y2, u8 c, s32 wx0, s32 wy0, s32 wx
 /* One segment of an outline, in layer pixels, clipped to the layer window [ox, wx1] x [oy, wy1] */
 static void vseg_layer(s32 x0, s32 y0, s32 x1, s32 y1, u8 c, s32 ox, s32 oy, s32 wx1, s32 wy1)
 {
+    if (vr_gpu_active()) { vr_gpu_line2d(x0,y0,x1,y1,c); return; }
     s64 ax = x0 - ox, ay = y0 - oy, bx = x1 - ox, by = y1 - oy;
     if (!clip_line(&ax, &ay, &bx, &by, wx1 - ox, wy1 - oy)) return;
     if (hr_tracing) { s32 t[11] = { (s32)(ax + ox), (s32)(ay + oy), (s32)(bx + ox), (s32)(by + oy), c, vl_w, vl_o, ox, oy, wx1, wy1 }; hr_trace(9, 11, t); }   /* 9: a clipped vector line + its window */
@@ -320,7 +337,7 @@ static void vseg_layer(s32 x0, s32 y0, s32 x1, s32 y1, u8 c, s32 ox, s32 oy, s32
 /* ... clipped to the 1x window [wxmin, wxmax] x [wymin, wymax] (frame pixels) */
 static void vseg(s32 x0, s32 y0, s32 x1, s32 y1, u8 c, int wxmin, int wxmax, int wymin, int wymax)
 {
-    const int n = enh_cv.n;
+    const int n = OBJ_N;
     vseg_layer(x0, y0, x1, y1, c, enh_cv.fx + n * wxmin, enh_cv.fy + n * wymin, enh_cv.fx + n * (wxmax + 1) - 1, enh_cv.fy + n * (wymax + 1) - 1);
 }
 
@@ -373,7 +390,7 @@ bool enh_box_begin(void)
 /* the centre in layer px: the hr point when it belongs to this (x, y) (the box follows the last B85D), else the middle of the 1x pixel */
 static void centre(int x, int y, s32 *cx, s32 *cy)
 {
-    const int n = enh_cv.n;
+    const int n = OBJ_N;
     if (enh_hr_pt.valid && abs(enh_hr_pt.x - (enh_cv.fx + n * x)) < n && abs(enh_hr_pt.y - (enh_cv.fy + n * y)) < n) { *cx = enh_hr_pt.x; *cy = enh_hr_pt.y; return; }
     *cx = enh_cv.fx + n * x + (n - 1) / 2; *cy = enh_cv.fy + n * y + (n - 1) / 2;
 }
@@ -388,7 +405,7 @@ void enh_box_end(int x, int y, int sz, int hex, int colour)
 {
     if (!vec_active) return;
     vec_hold_end();
-    const int n = enh_cv.n;
+    const int n = OBJ_N;
     int wx0, wx1, wy0, wy1;
     hud_window(&wx0, &wx1, &wy0, &wy1);
     s32 cx, cy;
@@ -412,7 +429,7 @@ void enh_diamond_end(int sx, int sy, int colour)
 {
     if (!vec_active) return;
     vec_hold_end();
-    const int n = enh_cv.n;
+    const int n = OBJ_N;
     int wx0, wx1, wy0, wy1;
     hud_window(&wx0, &wx1, &wy0, &wy1);
     s32 cx, cy;
@@ -445,7 +462,7 @@ static bool hud_ok(u16 seg, int colour)
 /* one line in layer pixels with the brush: the window is the frame; trace type 9 for the reference rasteriser */
 static void hud_seg(s32 x0, s32 y0, s32 x1, s32 y1, u8 c)
 {
-    const int n = enh_cv.n;
+    const int n = OBJ_N;
     const s32 wx0 = enh_cv.fx, wy0 = enh_cv.fy, wx1 = enh_cv.fx + 320 * n - 1, wy1 = enh_cv.fy + 200 * n - 1;
     vl_w = n / 2 > 1 ? n / 2 : 1;
     vl_o = (n - vl_w) / 2;
@@ -456,7 +473,7 @@ static void hud_seg(s32 x0, s32 y0, s32 x1, s32 y1, u8 c)
 /* the frame pixels (xa..xb, ya..yb) of an axis-aligned run, as one line whose brush covers it block edge to block edge */
 static void hud_run(int xa, int ya, int xb, int yb, u8 c)
 {
-    const int n = enh_cv.n, w = n / 2 > 1 ? n / 2 : 1, o = (n - w) / 2;
+    const int n = OBJ_N, w = n / 2 > 1 ? n / 2 : 1, o = (n - w) / 2;
     if (xa > xb) { int t = xa; xa = xb; xb = t; }
     if (ya > yb) { int t = ya; ya = yb; yb = t; }
     if (ya == yb) hud_seg(enh_cv.fx + n * xa - o, enh_cv.fy + n * ya, enh_cv.fx + n * (xb + 1) - o - w, enh_cv.fy + n * ya, c);    /* horizontal: thin across, full along */
@@ -482,7 +499,7 @@ void enh_hud_end_line(void)
     const u8 c = (u8)hl.c;
     if (hl.x1 == hl.x2 || hl.y1 == hl.y2) hud_run(hl.x1, hl.y1, hl.x2, hl.y2, c);
     else {
-        const int n = enh_cv.n;
+        const int n = OBJ_N;
         hud_seg(enh_cv.fx + n * hl.x1, enh_cv.fy + n * hl.y1, enh_cv.fx + n * hl.x2, enh_cv.fy + n * hl.y2, c);
     }
     st.lines++;
@@ -501,7 +518,7 @@ void enh_hud_tick(int x, int y, int dir, int npx)
     const u8 c = (u8)hl.c;
     if (npx >= 2) { hud_run(x, y, x + dir * (npx - 1), y, c); st.lines++; return; }
     /* one pixel of the scale line: a dash as tall as the 1x pixel, thin across */
-    const int n = enh_cv.n, w = n / 2 > 1 ? n / 2 : 1, o = (n - w) / 2;
+    const int n = OBJ_N, w = n / 2 > 1 ? n / 2 : 1, o = (n - w) / 2;
     hud_seg(enh_cv.fx + n * x, enh_cv.fy + n * y - o, enh_cv.fx + n * x, enh_cv.fy + n * (y + 1) - o - w, c);
     st.lines++;
 }
@@ -517,7 +534,7 @@ static u8 adi_c;
 
 bool enh_adi_begin(u16 seg, int colour)
 {
-    if (enh_cv.n < 2 || !hud_ok(seg, colour)) return false;
+    if (OBJ_N < 2 || !hud_ok(seg, colour)) return false;
     adi_c = (u8)colour;
     enh_vec_hold++;
     return true;
@@ -526,7 +543,7 @@ bool enh_adi_begin(u16 seg, int colour)
 void enh_adi_end(const s16 *pts, int n)
 {
     enh_vec_hold--;
-    const int N = enh_cv.n;
+    const int N = OBJ_N;
     const unsigned off = offset_get();
     const int ox = (int)(off % 320), oy = (int)(off / 320), ww = (s16)DSW(0x2293) + 1, wh = (s16)DSW(0x2295) + 1;
     const s32 wx0 = enh_cv.fx + N * ox, wy0 = enh_cv.fy + N * oy, wx1 = enh_cv.fx + N * (ox + ww) - 1, wy1 = enh_cv.fy + N * (oy + wh) - 1;

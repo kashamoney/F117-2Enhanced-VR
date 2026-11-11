@@ -10,17 +10,20 @@ typedef struct { VrQuat orientation; double position[3]; } VrPose;
 typedef struct { double left, right, up, down; } VrFov; /* tangent angles, in radians */
 typedef struct {
     int mode;                 /* 0 desktop, 1 OpenXR, 2 desktop stereo preview */
-    int resolution;           /* software eye image, square */
+    int resolution;           /* GPU eye height; 0 = OpenXR recommendation. Software fallback: square size. */
     double world_scale;       /* physical metres per game metre */
-    bool cockpit, diagnostic, selftest, dump;
+    bool cockpit, diagnostic, selftest, dump, software, gpu_check;
     char scene_test[1024];
 } VrOptions;
 extern VrOptions vr_options;
 int vr_parse_arg(int argc, char **argv, int i);
 bool vr_enabled(void);
+bool vr_use_gpu(void);
+int vr_canvas_resolution(void);
+int vr_canvas_height(void);
 bool vr_start(void *window_handle);
 void vr_stop(void);
-void vr_tick(const uint32_t *desktop, int w, int h);
+void vr_tick(const uint32_t *desktop, int w, int h, bool changed);
 bool vr_key(int scancode, bool down, bool repeat);
 bool vr_wants_quit(void);
 int vr_selftest(void);
@@ -40,6 +43,7 @@ void vr_queue_units(unsigned record);
 void vr_dequeue_units(unsigned record);
 void vr_translate_object(void); /* preserve fractional feet in the 16.16 camera translation */
 bool vr_eye_active(void);
+double vr_near_depth(void); /* camera depth of a physical 3 cm near plane */
 bool enh_vr_render(const VrPose *eye, uint32_t *out, int w, int h);
 bool enh_vr_ready(void);
 void enh_vr_frame(void);

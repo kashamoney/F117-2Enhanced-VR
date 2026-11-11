@@ -1,3 +1,4 @@
+#include "enhanced/vr_gpu.h" /* ENH: saved-state GPU eye pass */
 /* VGAME segment 12EF: the 2D edge clipper and the polygon assembler of the 3D renderer (spec render3d.md Part 5; the Python reference is port/notes/s37/R7b_ref.py).
  * An edge record (24 bytes, R3D_EDGES + 24 i) holds s32 coordinates before clip_edge and clipped s16 ones after it (see r3d.h and the spec's edge record table). The
  * out-codes are 1 y < ymin, 2 y > ymax, 4 x < xmin, 8 x > xmax; the window is DS:85CA.. (R3dWork). The INT 0 divide-overflow of the 16-bit intercept cannot happen
@@ -270,6 +271,7 @@ void r3d_note_zclip_point(u16 rec)
 void r3d_poly_add_edge(u16 rec)
 {
     ENH_HR(hr_poly_add_edge(rec));   /* ENH: */
+    if (vr_gpu_active()) return;    /* ENH: GPU capture needs no software edge row tables */
     u16 f = ER_W(rec, 2);
     WIN->poly_flags |= f;
     u8 al = (u8)f;
@@ -299,6 +301,7 @@ void r3d_line_emit(u16 rec)
 void r3d_poly_finish(s16 colour)
 {
     r3d_setcolor_M((u16)colour);
+    if (vr_gpu_active()) { hr_poly_finish(); return; } /* ENH: saved-state GPU pass rasterises on the GPU */
     if (WIN->zclip_n == 2) {
         r3d_clip_edge(R3D_CLOSE);
         r3d_poly_add_edge(R3D_CLOSE);

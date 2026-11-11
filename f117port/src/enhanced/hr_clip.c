@@ -32,6 +32,7 @@ static struct {
 void hr_clip_regions(void (*add)(void *p, size_t n)) { add(vtx, sizeof vtx); add(edges, sizeof edges); add(&closing, sizeof closing); add(&st, sizeof st); }
 
 #define N (enh_hr.n)
+#include "enhanced/vr_gpu.h"
 
 /* the assembler state of a pass starts from the faithful one (R3dWork), scaled */
 void hr_clip_begin(void)
@@ -105,6 +106,8 @@ void hr_project(u16 di, u16 bx)
     }
     s32 cr[3];
     terr_corr(cr);                                           /* ENH: fine terrain */
+    if (vr_gpu_active()) vr_gpu_vertex(k, ((double)DSSL(di)+cr[0])/65536.0,
+        ((double)DSSL((u16)(di+4))+cr[1])/65536.0, ((double)DSSL((u16)(di+8))+cr[2])/65536.0);
     const s32 z32 = DSSL((u16)(di + 8)) + cr[2];
     s16 zh = (s16)((u32)z32 >> 16);
     if (zh >= 0x100) {
@@ -335,6 +338,7 @@ static void near_point_fine(u16 p0o, u16 p1o, const s32 cr[3], s32 *ox, s32 *oy)
 
 void hr_make_edge(u16 rec, u16 v0x8, u16 v1x8)
 {
+    if (vr_gpu_active()) { vr_gpu_edge(rec,v0x8,v1x8); return; }
     HrEdge *e = edge_of(rec);
     if (!e || v0x8 / 8 >= 256 || v1x8 / 8 >= 256) return;
     const HrVtx *p0 = &vtx[v0x8 / 8], *p1 = &vtx[v1x8 / 8];
@@ -404,6 +408,7 @@ static void add_edge(HrEdge *e)
 
 void hr_poly_add_edge(u16 rec)
 {
+    if (vr_gpu_active()) { vr_gpu_add_edge(rec); return; }
     if (rec == R3D_CLOSE) return;                            /* hr_poly_finish adds its own closing edge */
     HrEdge *e = edge_of(rec);
     if (e) add_edge(e);
@@ -411,6 +416,7 @@ void hr_poly_add_edge(u16 rec)
 
 void hr_poly_finish(void)
 {
+    if (vr_gpu_active()) { vr_gpu_finish(R3D_W->gfx_colour); return; }
     if (st.zclip_n == 2) {
         closing.x0 = st.zclip[0][0]; closing.y0 = st.zclip[0][1];
         closing.x1 = st.zclip[1][0]; closing.y1 = st.zclip[1][1];
@@ -438,6 +444,7 @@ void hr_poly_finish(void)
 /* 1359:045D line_M of a clipped, not rejected edge (the face list tests 80h itself) */
 void hr_line(u16 rec)
 {
+    if (vr_gpu_active()) { vr_gpu_line(rec,R3D_W->gfx_colour); return; }
     HrEdge *e = edge_of(rec);
     if (!e || (e->flags & 0x80)) return;
     hr_draw_line_shaded(e->x0, e->y0, e->x1, e->y1, R3D_W->gfx_colour);   /* S3.5: with the blend code of a shaded colour */

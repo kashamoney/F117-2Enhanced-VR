@@ -1,5 +1,5 @@
 /* ENH: OpenXR + D3D11 seated prototype. OpenXR owns pose prediction, eye FOVs and
- * swapchains; the original game supplies two saved-state software-rendered worlds.
+ * swapchains; saved-state game passes supply original geometry for GPU rasterisation.
  * The cockpit is deliberately simple geometry with live original instrument art.
  * No original game assets are embedded in this backend. */
 #define WIN32_LEAN_AND_MEAN
@@ -7,7 +7,7 @@
 #define XR_USE_PLATFORM_WIN32
 #define XR_USE_GRAPHICS_API_D3D11
 #include <windows.h>
-#include <d3d11.h>
+#include <d3d11_1.h>
 #include <dxgi.h>
 #include <d3dcompiler.h>
 #include <wrl/client.h>
@@ -15,6 +15,7 @@
 #include <openxr/openxr_platform.h>
 #include <SDL3/SDL.h>
 #include "enhanced/vr.h"
+#include "enhanced/vr_gpu.h"
 #include <algorithm>
 #include <array>
 #include <cmath>
@@ -43,6 +44,37 @@ struct EyeSwap {
     DXGI_FORMAT format=DXGI_FORMAT_UNKNOWN;
     std::vector<XrSwapchainImageD3D11KHR> images;
 };
+struct WorldTarget {
+    ComPtr<ID3D11Texture2D> indices;
+    ComPtr<ID3D11RenderTargetView> rtv,colourRT;
+    ComPtr<ID3D11ShaderResourceView> srv;
+    int w=0,h=0;
+};
+const char *worldShader=R"HLSL(
+cbuffer Params : register(b0) {float4 source;float4 fov;float4 mode;};
+struct I {float2 ray:POSITION;uint colour:COLOR0;};
+struct O {float4 p:SV_POSITION;nointerpolation uint colour:COLOR0;};
+O WV(I i) {O o;o.p=float4((2*i.ray.x-fov.y-fov.x)/(fov.y-fov.x),
+    (2*i.ray.y-fov.z-fov.w)/(fov.z-fov.w),0,1);o.colour=i.colour;return o;}
+uint WP(O i):SV_TARGET {
+    uint lo=i.colour&255,hi=i.colour>>8;
+    uint parity=(uint(i.p.x)^uint(i.p.y))&1;
+    if(mode.z<0.5) {
+        float2 ray=float2(lerp(fov.x,fov.y,i.p.x/source.x),lerp(fov.z,fov.w,i.p.y/source.y));
+        parity=(int(floor(159+ray.x*256))^int(floor(100-ray.y*192)))&1;
+    }
+    if(hi==252 && parity==0) discard;
+    return hi<251 && parity!=0 ? hi:lo;
+}
+Texture2DMS<uint,4> idxMS:register(t0);
+Texture2D<float4> palette:register(t1);
+Texture2D<uint> idx:register(t2);
+float4 LookupMS(float4 p:SV_POSITION):SV_TARGET {
+    float4 c=0;[unroll]for(int k=0;k<4;k++)c+=palette.Load(int3(idxMS.Load(int2(p.xy),k),0,0));
+    return c*0.25;
+}
+float4 Lookup(float4 p:SV_POSITION):SV_TARGET {return palette.Load(int3(idx.Load(int3(p.xy,0)),0,0));}
+)HLSL";
 const char *shader=R"HLSL(
 cbuffer Params : register(b0) {float4 source;float4 fov;float4 mode;};
 Texture2D image : register(t0); SamplerState imageSampler : register(s0);
@@ -90,6 +122,17 @@ public:
     ComPtr<ID3D11RasterizerState> raster;
     ComPtr<ID3D11DepthStencilState> depthState;
     Image world[2],panel;
+    Image gpuPalette;
+    WorldTarget worldTarget[2];
+    VrGpuFrame geometry[2]{};
+    ComPtr<ID3D11VertexShader> worldVS;
+    ComPtr<ID3D11PixelShader> worldPS,lookupPS;
+    ComPtr<ID3D11InputLayout> worldLayout;
+    ComPtr<ID3D11Buffer> worldVB;
+    std::array<ComPtr<ID3D11BlendState>,3> logic;
+    size_t worldCapacity=0,uploadBytes=0;
+    unsigned samples=1;
+    bool gpuWorld=vr_use_gpu();
     std::vector<uint32_t> pixels[2];
     std::vector<uint32_t> panelPixels;
     std::vector<V> vertices;
@@ -98,12 +141,22 @@ public:
     Uint64 lastFrame=0,lastStats=0;
     unsigned frames=0;
     double frameMS=0;
+    bool benchmark=SDL_getenv("F117_VR_BENCHMARK")!=nullptr;
+    unsigned benchFrames=0;
+    unsigned benchTarget=SDL_getenv("F117_VR_BENCH_FRAMES")?std::clamp(SDL_atoi(SDL_getenv("F117_VR_BENCH_FRAMES")),1,900):30;
+    unsigned benchWarmup=SDL_getenv("F117_VR_BENCH_WARMUP")?std::clamp(SDL_atoi(SDL_getenv("F117_VR_BENCH_WARMUP")),0,900):5;
+    Uint64 benchStarted=0;
+    double benchMS=0;
+    size_t benchBytes=0;
+    double benchPanel=0,benchGeometry=0,benchDraw=0,benchPresent=0;
+    bool panelDirty=true,panelFlight=false;
     bool targetSRGB=true;
     FILE *log=nullptr;
 
     Backend() {log=std::fopen("f117-vr.log","w");}
     void note(const char *s) {std::fprintf(stderr,"[VR] %s\n",s);if(log){std::fprintf(log,"%s\n",s);std::fflush(log);}}
     ~Backend() {
+        for(auto &f:geometry)vr_gpu_free(&f);
         if(context) context->ClearState();
         for(auto &s:swaps) if(s.handle) xrDestroySwapchain(s.handle);
         if(seat) xrDestroySpace(seat);
@@ -181,13 +234,88 @@ public:
         dx(device->CreateRasterizerState(&rd,&raster),"rasterizer");
         D3D11_DEPTH_STENCIL_DESC dd{};dd.DepthEnable=TRUE;dd.DepthWriteMask=D3D11_DEPTH_WRITE_MASK_ALL;dd.DepthFunc=D3D11_COMPARISON_LESS_EQUAL;
         dx(device->CreateDepthStencilState(&dd,&depthState),"depth state");
+        if(gpuWorld)createWorldPipeline();
+    }
+    void createWorldPipeline() {
+        ComPtr<ID3D11Device1> d1;dx(device.As(&d1),"D3D11.1 world logic operations");
+        D3D11_FEATURE_DATA_D3D11_OPTIONS options{};
+        dx(device->CheckFeatureSupport(D3D11_FEATURE_D3D11_OPTIONS,&options,sizeof options),"world capabilities");
+        if(!options.OutputMergerLogicOp)throw std::runtime_error("GPU lacks palette logic operations; use --vr-software");
+        UINT quality=0;device->CheckMultisampleQualityLevels(DXGI_FORMAT_R8_UINT,4,&quality);samples=quality?4:1;
+        for(unsigned i=0;i<3;i++) {
+            D3D11_BLEND_DESC1 b{};b.RenderTarget[0].LogicOpEnable=TRUE;
+            b.RenderTarget[0].LogicOp=i==1?D3D11_LOGIC_OP_AND:i==2?D3D11_LOGIC_OP_OR:D3D11_LOGIC_OP_COPY;
+            b.RenderTarget[0].RenderTargetWriteMask=D3D11_COLOR_WRITE_ENABLE_ALL;
+            ComPtr<ID3D11BlendState1> state;dx(d1->CreateBlendState1(&b,&state),"palette logic blend");dx(state.As(&logic[i]),"world blend state");
+        }
+        ComPtr<ID3DBlob> v,p,l,error;
+        auto compile=[&](const char *entry,const char *profile,ComPtr<ID3DBlob> &blob){
+            error.Reset();HRESULT result=D3DCompile(worldShader,std::strlen(worldShader),"world",nullptr,nullptr,entry,profile,D3DCOMPILE_OPTIMIZATION_LEVEL3,0,&blob,&error);
+            if(FAILED(result)&&error)note(static_cast<const char*>(error->GetBufferPointer()));
+            dx(result,entry);
+        };
+        compile("WV","vs_5_0",v);compile("WP","ps_5_0",p);compile(samples==4?"LookupMS":"Lookup","ps_5_0",l);
+        dx(device->CreateVertexShader(v->GetBufferPointer(),v->GetBufferSize(),nullptr,&worldVS),"world VS");
+        dx(device->CreatePixelShader(p->GetBufferPointer(),p->GetBufferSize(),nullptr,&worldPS),"world PS");
+        dx(device->CreatePixelShader(l->GetBufferPointer(),l->GetBufferSize(),nullptr,&lookupPS),"palette PS");
+        D3D11_INPUT_ELEMENT_DESC in[]={
+            {"POSITION",0,DXGI_FORMAT_R32G32_FLOAT,0,0,D3D11_INPUT_PER_VERTEX_DATA,0},
+            {"COLOR",0,DXGI_FORMAT_R32_UINT,0,8,D3D11_INPUT_PER_VERTEX_DATA,0}};
+        dx(device->CreateInputLayout(in,2,v->GetBufferPointer(),v->GetBufferSize(),&worldLayout),"world input");
+    }
+    void renderWorld(int index,const VrFov &f,int w,int h) {
+        auto &t=worldTarget[index];auto &image=world[index];auto &g=geometry[index];
+        if(t.w!=w||t.h!=h) {
+            t=WorldTarget{};image=Image{};
+            D3D11_TEXTURE2D_DESC d{};d.Width=w;d.Height=h;d.MipLevels=1;d.ArraySize=1;d.Format=DXGI_FORMAT_R8_UINT;
+            d.SampleDesc.Count=samples;d.BindFlags=D3D11_BIND_RENDER_TARGET|D3D11_BIND_SHADER_RESOURCE;
+            dx(device->CreateTexture2D(&d,nullptr,&t.indices),"world index image");
+            dx(device->CreateRenderTargetView(t.indices.Get(),nullptr,&t.rtv),"world index target");
+            dx(device->CreateShaderResourceView(t.indices.Get(),nullptr,&t.srv),"world index view");
+            d.Format=DXGI_FORMAT_B8G8R8A8_UNORM_SRGB;d.SampleDesc.Count=1;
+            dx(device->CreateTexture2D(&d,nullptr,&image.texture),"world colour image");
+            dx(device->CreateRenderTargetView(image.texture.Get(),nullptr,&t.colourRT),"world colour target");
+            dx(device->CreateShaderResourceView(image.texture.Get(),nullptr,&image.srv),"world colour view");
+            t.w=image.w=w;t.h=image.h=h;
+        }
+        const size_t bytes=g.count*sizeof(VrGpuVertex);
+        if(bytes>worldCapacity) {
+            worldVB.Reset();worldCapacity=bytes*2+65536;
+            D3D11_BUFFER_DESC d{};d.ByteWidth=UINT(worldCapacity);d.Usage=D3D11_USAGE_DYNAMIC;d.BindFlags=D3D11_BIND_VERTEX_BUFFER;d.CPUAccessFlags=D3D11_CPU_ACCESS_WRITE;
+            dx(device->CreateBuffer(&d,nullptr,&worldVB),"world vertex buffer");
+        }
+        D3D11_MAPPED_SUBRESOURCE mapped;
+        dx(context->Map(worldVB.Get(),0,D3D11_MAP_WRITE_DISCARD,0,&mapped),"world vertices");
+        std::memcpy(mapped.pData,g.vertices,bytes);context->Unmap(worldVB.Get(),0);uploadBytes+=bytes;
+        ID3D11RenderTargetView *rt=t.rtv.Get();context->OMSetRenderTargets(1,&rt,nullptr);
+        context->OMSetDepthStencilState(nullptr,0);context->RSSetState(raster.Get());
+        const float clear[4]={0,0,0,0};context->ClearRenderTargetView(rt,clear);
+        D3D11_VIEWPORT vp{0,0,float(w),float(h),0,1};context->RSSetViewports(1,&vp);
+        Constants c{};c.fov[0]=float(std::tan(f.left));c.fov[1]=float(std::tan(f.right));c.fov[2]=float(std::tan(f.up));c.fov[3]=float(std::tan(f.down));
+        c.source[0]=float(w);c.source[1]=float(h);c.mode[2]=g.fine?1.0f:0.0f;
+        dx(context->Map(cb.Get(),0,D3D11_MAP_WRITE_DISCARD,0,&mapped),"world constants");std::memcpy(mapped.pData,&c,sizeof c);context->Unmap(cb.Get(),0);
+        ID3D11Buffer *constants=cb.Get();context->VSSetConstantBuffers(0,1,&constants);context->PSSetConstantBuffers(0,1,&constants);
+        UINT stride=sizeof(VrGpuVertex),offset=0;ID3D11Buffer *buffer=worldVB.Get();context->IASetVertexBuffers(0,1,&buffer,&stride,&offset);
+        context->IASetInputLayout(worldLayout.Get());context->IASetPrimitiveTopology(D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
+        context->VSSetShader(worldVS.Get(),nullptr,0);context->PSSetShader(worldPS.Get(),nullptr,0);
+        for(size_t i=0;i<g.batch_count;i++){auto &b=g.batches[i];context->OMSetBlendState(logic[b.op].Get(),nullptr,~0u);context->Draw(b.count,b.first);}
+        context->OMSetBlendState(nullptr,nullptr,~0u);
+        for(auto &colour:g.palette)colour|=0xFF000000;
+        upload(gpuPalette,g.palette,256,1);
+        rt=t.colourRT.Get();context->OMSetRenderTargets(1,&rt,nullptr);
+        // The existing full-screen layout/VS only provides clip positions here.
+        fullscreen();draw(0,f,nullptr);
+        ID3D11ShaderResourceView *views[3]={samples==4?t.srv.Get():nullptr,gpuPalette.srv.Get(),samples==1?t.srv.Get():nullptr};
+        context->PSSetShaderResources(0,3,views);context->PSSetShader(lookupPS.Get(),nullptr,0);context->Draw(6,0);
+        ID3D11ShaderResourceView *none[3]={nullptr,nullptr,nullptr};context->PSSetShaderResources(0,3,none);
+        rt=nullptr;context->OMSetRenderTargets(1,&rt,nullptr);
     }
     void createMirror(HWND hwnd) {
         if(!hwnd) return;
         ComPtr<IDXGIDevice> d;dx(device.As(&d),"DXGI device");
         ComPtr<IDXGIAdapter> adapter;dx(d->GetAdapter(&adapter),"mirror adapter");
         ComPtr<IDXGIFactory> factory;dx(adapter->GetParent(IID_PPV_ARGS(&factory)),"mirror factory");
-        DXGI_SWAP_CHAIN_DESC desc{};desc.BufferDesc.Width=vr_options.resolution;desc.BufferDesc.Height=vr_options.resolution;
+        DXGI_SWAP_CHAIN_DESC desc{};desc.BufferDesc.Width=1024;desc.BufferDesc.Height=1024;
         desc.BufferDesc.Format=DXGI_FORMAT_R8G8B8A8_UNORM;desc.SampleDesc.Count=1;desc.BufferUsage=DXGI_USAGE_RENDER_TARGET_OUTPUT;
         desc.BufferCount=2;desc.OutputWindow=hwnd;desc.Windowed=TRUE;desc.SwapEffect=DXGI_SWAP_EFFECT_DISCARD;
         dx(factory->CreateSwapChain(device.Get(),&desc,&mirror),"stereo mirror swapchain");
@@ -218,6 +346,8 @@ public:
         if(!format) throw std::runtime_error("Runtime has no supported 8-bit swapchain format");
         for(int i=0;i<2;i++) {
             auto &s=swaps[i];s.w=config[i].recommendedImageRectWidth;s.h=config[i].recommendedImageRectHeight;s.format=static_cast<DXGI_FORMAT>(format);
+            if(gpuWorld&&vr_options.resolution) {s.w=int(std::lround(double(s.w)*vr_options.resolution/s.h));s.h=vr_options.resolution;}
+            char message[160];std::snprintf(message,sizeof message,"Eye %d world target: %dx%d, %ux MSAA",i,s.w,s.h,gpuWorld?samples:1);note(message);
             XrSwapchainCreateInfo sc{XR_TYPE_SWAPCHAIN_CREATE_INFO};sc.usageFlags=XR_SWAPCHAIN_USAGE_COLOR_ATTACHMENT_BIT;
             sc.format=format;sc.sampleCount=1;sc.width=s.w;sc.height=s.h;sc.faceCount=1;sc.arraySize=1;sc.mipCount=1;
             xr(xrCreateSwapchain(session,&sc,&s.handle),"create eye swapchain");
@@ -228,9 +358,11 @@ public:
     }
     void init(HWND hwnd,bool p) {
         preview=p;if(!preview)createInstance();createDevice();createMirror(hwnd);if(!preview)createSession();
-        char b[160];std::snprintf(b,sizeof b,"%s ready; software eyes %dx%d; F12 recenter, F11 cockpit",preview?"Desktop stereo preview":"OpenXR",vr_options.resolution,vr_options.resolution);note(b);
+        char b[160];std::snprintf(b,sizeof b,"%s ready; %s world; F12 recenter, F11 cockpit",preview?"Desktop stereo preview":"OpenXR",gpuWorld?"GPU geometry at eye resolution":"software fallback");note(b);
+        if(preview&&gpuWorld){std::snprintf(b,sizeof b,"Preview world target: %dx%d, %ux MSAA",vr_options.resolution?vr_options.resolution:1920,vr_options.resolution?vr_options.resolution:1920,samples);note(b);}
     }
     void upload(Image &i,const uint32_t *data,int w,int h) {
+        uploadBytes+=size_t(w)*h*4;
         if(i.w!=w || i.h!=h) {
             i.srv.Reset();i.texture.Reset();
             D3D11_TEXTURE2D_DESC d{};d.Width=w;d.Height=h;d.MipLevels=1;d.ArraySize=1;d.Format=DXGI_FORMAT_B8G8R8A8_UNORM_SRGB;
@@ -288,7 +420,7 @@ public:
                 float x,float y,float w,float h,bool flight) {
         context->OMSetRenderTargets(1,&target,depth);context->OMSetDepthStencilState(depthState.Get(),0);context->RSSetState(raster.Get());
         D3D11_VIEWPORT vp{x,y,w,h,0,1};context->RSSetViewports(1,&vp);
-        if(flight) {fullscreen();draw(3,f,&world[index],std::max(1,vr_options.resolution/1024));}
+        if(flight) {fullscreen();draw(gpuWorld?1:3,f,&world[index],std::max(1,vr_canvas_resolution()/1024));}
         const std::array<float,4> white={1,1,1,1},dark={0.025f,0.03f,0.035f,1},rim={0.07f,0.08f,0.09f,1};
         if(!flight) {
             quad(eye,f,{{{-1.05,0.65,-1.7},{1.05,0.65,-1.7},{1.05,-0.66,-1.7},{-1.05,-0.66,-1.7}}},white);
@@ -343,6 +475,46 @@ public:
         }
         dumped=true;note("Wrote vr-left.png and vr-right.png (software world views)");
     }
+    std::vector<uint32_t> readWorld(Image &im,const char *path) {
+        D3D11_TEXTURE2D_DESC desc;im.texture->GetDesc(&desc);
+        desc.Usage=D3D11_USAGE_STAGING;desc.BindFlags=0;desc.CPUAccessFlags=D3D11_CPU_ACCESS_READ;desc.MiscFlags=0;
+        ComPtr<ID3D11Texture2D> staging;dx(device->CreateTexture2D(&desc,nullptr,&staging),"world readback image");
+        context->CopyResource(staging.Get(),im.texture.Get());D3D11_MAPPED_SUBRESOURCE mapped;
+        dx(context->Map(staging.Get(),0,D3D11_MAP_READ,0,&mapped),"world readback");
+        std::vector<uint32_t> data(size_t(im.w)*im.h);
+        for(int y=0;y<im.h;y++)std::memcpy(data.data()+size_t(y)*im.w,static_cast<const char*>(mapped.pData)+size_t(y)*mapped.RowPitch,size_t(im.w)*4);
+        context->Unmap(staging.Get(),0);
+        auto *surface=SDL_CreateSurfaceFrom(im.w,im.h,SDL_PIXELFORMAT_XRGB8888,data.data(),im.w*4);
+        if(surface){SDL_SavePNG(surface,path);SDL_DestroySurface(surface);}return data;
+    }
+    void dumpGpuEyes(const std::array<VrPose,2> &poses,const std::array<VrFov,2> &fovs,int w,int h) {
+        if(!vr_options.dump||dumped)return;
+        readWorld(world[0],"vr-left.png");readWorld(world[1],"vr-right.png");
+        // Differential check at precisely the software reference's projection.
+        const int n=4;double cx=(w-320*n)/2.0+159*n,cy=h/2.0;
+        VrFov ref{std::atan(-cx/(256*n)),std::atan((w-cx)/(256*n)),std::atan(cy/(192*n)),std::atan((cy-h)/(192*n))};
+        const bool validate=SDL_getenv("F117_VR_VALIDATE")!=nullptr;
+        const VrQuat turns[]={{0,0,0,1},{0,float(std::sin(.25)),0,float(std::cos(.25))},
+            {float(std::sin(.2)),0,0,float(std::cos(.2))},{0,0,float(std::sin(.4)),float(std::cos(.4))}};
+        for(int k=0;k<(validate?4:1);k++) {
+            VrPose check=poses[0];check.orientation=vr_multiply(check.orientation,turns[k]);
+            vr_gpu_begin(&geometry[0]);bool ok=enh_vr_render(&check,nullptr,w,h);vr_gpu_end();
+            if(!ok||geometry[0].invalid)throw std::runtime_error("GPU validation geometry failed");
+            char name[80];std::snprintf(name,sizeof name,"vr-gpu-reference-%d.png",k);
+            renderWorld(0,ref,w,h);readWorld(world[0],name);
+            std::vector<uint32_t> software(size_t(w)*h);
+            if(enh_vr_render(&check,software.data(),w,h)) {
+                auto *surface=SDL_CreateSurfaceFrom(w,h,SDL_PIXELFORMAT_XRGB8888,software.data(),w*4);
+                std::snprintf(name,sizeof name,"vr-software-reference-%d.png",k);
+                if(surface){SDL_SavePNG(surface,name);SDL_DestroySurface(surface);}
+            }
+        }
+        vr_gpu_begin(&geometry[0]);bool ok=enh_vr_render(&poses[0],nullptr,w,h);vr_gpu_end();
+        if(!ok)throw std::runtime_error("Restore native GPU eye after validation");
+        int ew=preview?(vr_options.resolution?vr_options.resolution:1920):swaps[0].w;
+        int eh=preview?ew:swaps[0].h;renderWorld(0,fovs[0],ew,eh);
+        dumped=true;note("Wrote native GPU eyes and matched-projection software/GPU references");
+    }
     void dumpMirror(int size) {
         if(!vr_options.dump || !mirror || mirrorDumped)return;
         ComPtr<ID3D11Texture2D> back,staging;
@@ -357,14 +529,17 @@ public:
         if(surface){SDL_SavePNG(surface,"vr-mirror.png");SDL_DestroySurface(surface);}
         context->Unmap(staging.Get(),0);mirrorDumped=true;note("Wrote vr-mirror.png (GPU-rendered stereo cockpit)");
     }
-    void tick(const uint32_t *desktop,int w,int h) {
+    void tick(const uint32_t *desktop,int w,int h,bool changed) {
+        panelDirty|=changed;
         if(in_tick || exit || !desktop)return;
+        if(benchmark&&!enh_vr_ready())return;
         const Uint64 now=SDL_GetTicksNS();
-        if(preview && lastFrame && now-lastFrame<SDL_NS_PER_SECOND/60)return;
+        if(preview && !benchmark && lastFrame && now-lastFrame<SDL_NS_PER_SECOND/60)return;
         in_tick=true;
         struct Guard {bool &b;~Guard(){b=false;}} guard{in_tick};
         if(!preview){poll();if(!running)return;}
         const Uint64 started=SDL_GetTicksNS();
+        uploadBytes=0;
         XrFrameState frame{XR_TYPE_FRAME_STATE};bool begun=false;
         if(!preview) {
             XrFrameWaitInfo wait{XR_TYPE_FRAME_WAIT_INFO};xr(xrWaitFrame(session,&wait,&frame),"wait VR frame");
@@ -404,21 +579,40 @@ public:
                 fovs[i]={f.angleLeft,f.angleRight,f.angleUp,f.angleDown};
             }
         }
-        const int panelScale=std::max(1,vr_options.resolution/1024);
-        panelPixels.resize(size_t(320*panelScale)*200*panelScale);
-        vr_capture_desktop(desktop,w,h,panelPixels.data(),panelScale);
-        upload(panel,panelPixels.data(),320*panelScale,200*panelScale);
+        const Uint64 workStarted=SDL_GetTicksNS(); // exclude OpenXR frame wait / tracking lookup
+        const int panelScale=gpuWorld?4:std::max(1,vr_canvas_resolution()/1024);
         bool flight=enh_vr_ready();
-        const int size=vr_options.resolution;
+        if(panelDirty || panelFlight!=flight || !panel.texture) {
+            panelPixels.resize(size_t(320*panelScale)*200*panelScale);
+            vr_capture_desktop(desktop,w,h,panelPixels.data(),panelScale);
+            upload(panel,panelPixels.data(),320*panelScale,200*panelScale);
+            panelDirty=false;panelFlight=flight;
+        }
+        const Uint64 panelDone=SDL_GetTicksNS();
+        double geometryMS=0;
+        const int size=vr_canvas_resolution();
         if(flight) {
             enh_vr_frame(); // latch one alpha for both eyes
             for(int i=0;i<2;i++) {
-                pixels[i].resize(size_t(size)*size);
-                if(!enh_vr_render(&poses[i],pixels[i].data(),size,size)){flight=false;break;}
-                upload(world[i],pixels[i].data(),size,size);
+                if(gpuWorld) {
+                    vr_gpu_begin(&geometry[i]);
+                    Uint64 geometryStart=SDL_GetTicksNS();
+                    bool ok=enh_vr_render(&poses[i],nullptr,w,h);vr_gpu_end();
+                    geometryMS+=(SDL_GetTicksNS()-geometryStart)/1e6;
+                    if(!ok){flight=false;break;}
+                    int ew=preview?(vr_options.resolution?vr_options.resolution:1920):swaps[i].w;
+                    int eh=preview?ew:swaps[i].h;
+                    renderWorld(i,fovs[i],ew,eh);
+                } else {
+                    pixels[i].resize(size_t(size)*size);
+                    if(!enh_vr_render(&poses[i],pixels[i].data(),size,size)){flight=false;break;}
+                    upload(world[i],pixels[i].data(),size,size);
+                }
             }
-            if(flight)dumpEyes(size);
+            if(flight&&!gpuWorld)dumpEyes(size);
+            if(flight&&gpuWorld)dumpGpuEyes(poses,fovs,w,h);
         }
+        const Uint64 worldDone=SDL_GetTicksNS();
         float clear[4]={0.015f,0.02f,0.025f,1};
         std::array<XrCompositionLayerProjectionView,2> projectionViews;
         if(!preview) {
@@ -455,11 +649,28 @@ public:
             targetSRGB=true;
             context->ClearRenderTargetView(mirrorRT.Get(),clear);context->ClearDepthStencilView(mirrorDepth.Get(),D3D11_CLEAR_DEPTH,1,0);
             // Square eyes, side by side, letterboxed in the square desktop window.
-            for(int i=0;i<2;i++)render(i,poses[i],fovs[i],mirrorRT.Get(),mirrorDepth.Get(),float(i*size/2),float(size/4),float(size/2),float(size/2),flight);
-            if(flight)dumpMirror(size);
+            for(int i=0;i<2;i++)render(i,poses[i],fovs[i],mirrorRT.Get(),mirrorDepth.Get(),float(i*512),256,512,512,flight);
+            if(flight)dumpMirror(1024);
             dx(mirror->Present(0,0),"present stereo mirror");
         }
         lastFrame=SDL_GetTicksNS();frameMS+=(lastFrame-started)/1e6;frames++;
+        if(benchmark && flight) {
+            if(benchFrames==benchWarmup)benchStarted=workStarted;
+            if(benchFrames++>=benchWarmup) {
+                benchMS+=(lastFrame-workStarted)/1e6;benchBytes+=uploadBytes;
+                benchPanel+=(panelDone-workStarted)/1e6;benchGeometry+=geometryMS;
+                benchDraw+=(worldDone-panelDone)/1e6-geometryMS;benchPresent+=(lastFrame-worldDone)/1e6;
+            }
+            if(benchFrames==benchTarget+benchWarmup) {
+                // Include completion of GPU work, once, without forcing a per-frame stall.
+                D3D11_QUERY_DESC qd{D3D11_QUERY_EVENT,0};ComPtr<ID3D11Query> q;
+                dx(device->CreateQuery(&qd,&q),"benchmark fence");context->End(q.Get());context->Flush();
+                while(context->GetData(q.Get(),nullptr,0,0)==S_FALSE) SDL_Delay(0);
+                benchMS+=(SDL_GetTicksNS()-lastFrame)/1e6;
+                char b[320];std::snprintf(b,sizeof b,"VR benchmark: %u stereo frames, %.3f ms/frame (render, upload, GPU completion; no XR wait); upload %.3f MiB/frame; %zu triangles, %u invalid faces; %.1f submitted frames/s",benchTarget,benchMS/benchTarget,benchBytes/double(benchTarget)/1048576.0,(geometry[0].count+geometry[1].count)/3,geometry[0].invalid+geometry[1].invalid,benchTarget*1e9/(SDL_GetTicksNS()-benchStarted));note(b);exit=true;
+                std::snprintf(b,sizeof b,"VR stages (ms/frame): panel %.3f; geometry %.3f; world GPU commands %.3f; headset/mirror %.3f",benchPanel/benchTarget,benchGeometry/benchTarget,benchDraw/benchTarget,benchPresent/benchTarget);note(b);
+            }
+        }
         if(lastFrame-lastStats>5*SDL_NS_PER_SECOND) {
             char b[160];std::snprintf(b,sizeof b,"%s; %u frames, average frame work %.2f ms (includes OpenXR wait)",flight?"Stereo world":"Menu panel",frames,frameMS/std::max(1u,frames));note(b);lastStats=lastFrame;frames=0;frameMS=0;
         }
@@ -478,9 +689,9 @@ extern "C" bool vr_start(void *hwnd) {
     catch(const std::exception &e) {if(backend)backend->note(e.what());backend.reset();return false;}
 }
 extern "C" void vr_stop(void) {backend.reset();}
-extern "C" void vr_tick(const uint32_t *pixels,int w,int h) {
+extern "C" void vr_tick(const uint32_t *pixels,int w,int h,bool changed) {
     if(!backend || failed)return;
-    try {backend->tick(pixels,w,h);}
+    try {backend->tick(pixels,w,h,changed);}
     catch(const std::exception &e) {backend->note(e.what());backend->note("VR rendering stopped after an error; close the game and inspect f117-vr.log");failed=true;}
 }
 extern "C" bool vr_wants_quit(void) {return failed || (backend && backend->exit);}

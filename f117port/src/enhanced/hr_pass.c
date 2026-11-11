@@ -11,6 +11,7 @@
 #include "enhanced/enhanced.h"
 #include "enhanced/sandbox.h"
 #include "enhanced/wide.h"
+#include "enhanced/vr_gpu.h"
 #include "host.h"
 #include "render3d/r3d.h"
 #include "video/video.h"
@@ -142,7 +143,7 @@ void enh_r3d_viewport(u16 vp)
     hr_night_pass_begin(main_win);                                        /* S3.6 (before S3.5: a night pass turns the blend codes on) */
     hr_shade_pass_begin();                                                /* S3.5 */
     if (!enh_page_tracked(seg)) return;
-    if (!keep) enh_pass_clear(x0, y0, x1, y1);
+    if (!keep && !vr_gpu_active()) enh_pass_clear(x0, y0, x1, y1);
     u16 *layer = enh_layer3d();
     if (!layer || x0 < 0 || y0 < 0 || x1 > 319 || y1 > 199 || x1 < x0 || y1 < y0) return;
     HrCtx *h = &enh_hr;
@@ -163,10 +164,18 @@ void enh_r3d_viewport(u16 vp)
         h->ox = 0; h->oy = 0; h->exmax = h->lw - 1; h->eymax = h->lh - 1;
         h->e2dx = h->wx; h->e2dy = h->wy;
         if (y1 < 199) { h->hole = true; h->hole_x0 = h->fx; h->hole_x1 = h->fx + 320 * n - 1; h->hole_y = h->fy + n * (y1 + 1); }
-        enh_wide_clear_outside();
+        if (!vr_gpu_active()) enh_wide_clear_outside();
     }
-    h->line_w = n / 2 > 1 ? n / 2 : 1;
-    h->line_o = (n - h->line_w) / 2;
+    if (vr_gpu_active()) {
+        /* Virtual coordinates give legacy sky/sprite arithmetic subpixel
+         * precision. No backing image of this size exists or is transferred. */
+        h->n=16;h->lw=h->lh=16384;h->fx=(h->lw-320*h->n)/2;h->fy=(h->lh-200*h->n)/2;
+        h->cx=h->fx+h->n*DSS(0x85D2);h->cy=h->fy+h->n*DSS(0x85D4);
+        h->xmin=h->ymin=h->ox=h->oy=0;h->xmax=h->exmax=h->lw-1;h->ymax=h->eymax=h->lh-1;
+        h->wx=h->e2dx=h->fx;h->wy=h->e2dy=h->fy;h->wide=true;h->hole=false;
+    }
+    h->line_w = h->n / 2 > 1 ? h->n / 2 : 1;
+    h->line_o = (h->n - h->line_w) / 2;
     h->fine = enh.dither_fine;
     h->on = true;
     h->have = true;
@@ -185,7 +194,7 @@ void enh_r3d_viewport(u16 vp)
     }
     hr_raster_begin();
     hr_clip_begin();
-    if (wide) enh_wide_begin();                                           /* S3.4: the widening factors of this canvas */
+    if (wide || vr_gpu_active()) enh_wide_begin();                        /* VR culling follows the virtual eye window even with a compact instrument canvas */
     if (test_pump() && !enh_sbx && main_win) host_pump();                 /* S3.4 fix, test aid (F117_TEST_PUMP=1): a present inside the open main pass, as the
                                                                            * real-time [262A] wait does (the canvas must not be resized under it) */
 }
@@ -217,13 +226,13 @@ void hr_project_point(s32 X, s32 Y, s32 Z, bool visible)
 {
     enh_hr_pt.size = 0;
     if (!enh_layer3d() || Z == 0) { enh_hr_pt.valid = false; return; }
-    const int n = enh_cv.n;
+    const int n = vr_gpu_active() ? enh_hr.n : enh_cv.n;
     s64 xw = (s32)((u32)X << 8), yw = (s32)((u32)Y << 8);
     s64 qx = xw * n / Z, qy = yw * n / Z;
     qy -= qy >> 2;
     s64 oy = DSW(0x365E) != 0 ? (DSB(0x294B) == 0 ? 0x34 : 0x3C) : 0x64;
-    enh_hr_pt.x = (s32)(enh_cv.fx + (s64)n * 0xA0 + qx);
-    enh_hr_pt.y = (s32)(enh_cv.fy + (s64)n * oy + qy);
+    enh_hr_pt.x = (s32)((vr_gpu_active()?enh_hr.fx:enh_cv.fx) + (s64)n * 0xA0 + qx);
+    enh_hr_pt.y = (s32)((vr_gpu_active()?enh_hr.fy:enh_cv.fy) + (s64)n * oy + qy);
     enh_hr_pt.valid = visible;
 }
 
