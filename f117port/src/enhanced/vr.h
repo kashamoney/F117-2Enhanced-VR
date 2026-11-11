@@ -44,7 +44,8 @@ bool enh_vr_render(const VrPose *eye, uint32_t *out, int w, int h);
 bool enh_vr_ready(void);
 void enh_vr_frame(void);
 void vr_scene_check(void);
-void vr_capture_desktop(const uint32_t *src, int w, int h, uint32_t out[320 * 200]);
+/* Destination holds (320*scale)*(200*scale) pixels, preserving enhanced vectors/MFDs. */
+void vr_capture_desktop(const uint32_t *src, int w, int h, uint32_t *out, int scale);
 #ifdef __cplusplus
 }
 #endif

@@ -33,7 +33,7 @@ def roster() -> bytes:
     return bytes(result)
 
 
-def run(exe: Path, game: Path, directory: Path, stereo: bool, preview: bool = False) -> tuple[list[str], bytes]:
+def run(exe: Path, game: Path, directory: Path, stereo: bool, preview: bool = False, resolution: int = 2048) -> tuple[list[str], bytes]:
     directory.mkdir(parents=True)
     scratch = directory / "game"
     scratch.mkdir()
@@ -45,12 +45,13 @@ def run(exe: Path, game: Path, directory: Path, stereo: bool, preview: bool = Fa
     for key in list(env):
         if key.startswith("F117_"):
             env.pop(key)
-    env.update(F117_KEYS="1:31,2:03,11:39", F117_VCLOCK="1", F117_WINDOW="1024x1024",
+    env.update(F117_KEYS="1:31,2:03,11:39", F117_VCLOCK="1", F117_WINDOW=f"{resolution}x{resolution}",
                F117_SHELL_SCRIPT=str(ROOT / "port/notes/s54/shell_chain_libya.txt"),
                F117_END_SCRIPT=str(ROOT / "port/notes/s58/end_chain.txt"),
                F117_VGAME_DIVE="40", F117_VGAME_FRAMES="400")
     command = [str(exe), "--headless", "--trace", "--game-dir", str(scratch),
-               "--fps", "off", "--aspect", "1:1", "--render-scale", "1",
+               "--fps", "off", "--aspect", "1:1", "--render-scale", str(max(1,resolution//1024)),
+               "--vr-resolution", str(resolution),
                "--sandbox-hash", str(directory / "hash.txt")]
     if stereo:
         command += ["--vr-scene-test", str(directory)]
@@ -83,19 +84,20 @@ def main() -> None:
     parser.add_argument("--game-dir", type=Path, required=True)
     parser.add_argument("--work-dir", type=Path, default=ROOT / "work/vr-check")
     parser.add_argument("--preview-smoke", action="store_true", help="also run the native D3D11 preview window")
+    parser.add_argument("--resolution",type=int,choices=(1024,2048),default=2048)
     args = parser.parse_args()
     directory = args.work_dir.resolve() / uuid.uuid4().hex[:10]
     exe, game = args.exe.resolve(), args.game_dir.resolve()
     if not (game / "VGAME.EXE").is_file():
         parser.error("--game-dir must contain the original game files")
-    baseline = run(exe, game, directory / "desktop", False)
-    stereo = run(exe, game, directory / "stereo", True)
+    baseline = run(exe, game, directory / "desktop", False,resolution=args.resolution)
+    stereo = run(exe, game, directory / "stereo", True,resolution=args.resolution)
     if baseline != stereo:
         raise RuntimeError(f"Stereo rendering changed simulation hashes or pilot roster. Inspect {directory}")
     print(f"VR integration OK: {len(baseline[0])} engine hashes and final roster match exactly.")
     print(f"Scene images and logs: {directory / 'stereo'}")
     if args.preview_smoke:
-        run(exe, game, directory / "preview", False, preview=True)
+        run(exe, game, directory / "preview", False, preview=True,resolution=args.resolution)
         print(f"D3D11 stereo mirror and live cockpit smoke test OK: {directory / 'preview'}")
 
 

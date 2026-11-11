@@ -75,6 +75,11 @@ The default game folder is `../F117-Enhanced-play/Game` in this workspace. Origi
 stay separate from the source and the game saves your pilot roster in that working copy.
 Run **`Preview-VR.cmd`** for a desktop stereo preview without a headset.
 The desktop mirror shows the two square eye images side by side.
+The default world source is now **2048x2048 per eye**, up from 1024x1024 (four times
+the source pixels). The live panel/HUD texture retains the enhanced 2x rendering at
+640x400 instead of being reduced to 320x200. Original bitmap artwork keeps its original
+detail, while vector instruments and the 3D world can render more sharply. The desktop
+mirror window stays at 1024x1024 independently of the eye source resolution.
 
 For a first headset test, **`Carrier-VR.cmd`** prepares a separate practice copy with a test
 pilot and automatically navigates setup/briefing to a Libya carrier mission. Allow the intro
@@ -123,7 +128,7 @@ Advanced launch options:
 .\tools\Start-VR.ps1 -GameDirectory 'D:\Games\F117'
 ```
 
-`--vr-resolution 640..2048` sets each software-rendered eye image (default 1024).
+`--vr-resolution 640..2048` sets each software-rendered eye image (default 2048).
 The headset submission targets use OpenXR's recommended sizes. Lower the software
 resolution if frame times are too high; this is a CPU software renderer, and a fast GPU
 does not guarantee native headset frame rate. `--vr-world-scale 0.1..10` sets physical
@@ -165,8 +170,16 @@ the final pilot roster against a run with VR rendering off. Images/logs are save
 Add `--preview-smoke` to exercise the native D3D11 window and save `vr-mirror.png` with
 the GPU-rendered cockpit. In this workspace the 43 regression checks, stereo integration
 and native preview have passed; a live Odyssey+/Oasis carrier scene also submits at about
-90 frames/s with default settings. Visual comfort/readability and performance in flight
+90 frames/s at the initial 1024-per-eye setting. Visual comfort/readability and performance in flight
 remain user checks.
+To restore that lower-cost setting, use `tools/Start-VR.ps1 -Resolution 1024` (or add
+`-CarrierPractice` for the separate training pilot). The 2048 setting renders four times
+as many source pixels. The live carrier test at 2048 measured roughly 40-45 submitted
+frames/s on this PC, compared with about 90 at 1024; choose 1024 if the sharper setting
+does not feel smooth enough. Full-world eye passes reuse scratch layers instead of
+copying large pixel planes that the next render immediately overwrites; this optimization
+was checked to produce exactly the same world images.
+The integration tool accepts `--resolution 1024` or `--resolution 2048` to check either setting.
 
 The full upstream regression suite additionally uses Python `unicorn`, `numpy`, and
 `Pillow`, the faithful companion repository's tools/specs, original files through a

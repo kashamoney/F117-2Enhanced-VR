@@ -602,7 +602,7 @@ void enh_vr_frame(void) { vr_alpha = alpha_at(dclock()); }
 bool enh_vr_render(const VrPose *eye, u32 *out, int w, int h)
 {
     if (!enh_vr_ready() || w != enh_cv.lw || h != enh_cv.lh) return false;
-    if (!image_save(&img_live) || !enh_canvas_snap_copy(&cv_scratch, &img_a.cv)) return false;
+    if (!image_save(&img_live) || !enh_canvas_snap_for_eye(&cv_scratch, &img_a.cv)) return false;
     enh_canvas_snap_swap(&cv_scratch);
     image_load(&img_a);
     enh_sbx = true;

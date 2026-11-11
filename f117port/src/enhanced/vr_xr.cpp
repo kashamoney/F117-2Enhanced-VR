@@ -91,7 +91,7 @@ public:
     ComPtr<ID3D11DepthStencilState> depthState;
     Image world[2],panel;
     std::vector<uint32_t> pixels[2];
-    std::array<uint32_t,320*200> panelPixels{};
+    std::vector<uint32_t> panelPixels;
     std::vector<V> vertices;
     VrPose previewHead{{0,0,0,1},{0,0,0}};
     double previewYaw=0,previewPitch=0;
@@ -404,7 +404,10 @@ public:
                 fovs[i]={f.angleLeft,f.angleRight,f.angleUp,f.angleDown};
             }
         }
-        vr_capture_desktop(desktop,w,h,panelPixels.data());upload(panel,panelPixels.data(),320,200);
+        const int panelScale=std::max(1,vr_options.resolution/1024);
+        panelPixels.resize(size_t(320*panelScale)*200*panelScale);
+        vr_capture_desktop(desktop,w,h,panelPixels.data(),panelScale);
+        upload(panel,panelPixels.data(),320*panelScale,200*panelScale);
         bool flight=enh_vr_ready();
         const int size=vr_options.resolution;
         if(flight) {

@@ -11,7 +11,7 @@
 
 #define VR_PI 3.14159265358979323846
 #define VR_METRES_PER_UNIT (512000.0 / 1048576.0)
-VrOptions vr_options = { .resolution = 1024, .world_scale = 1.0, .cockpit = true };
+VrOptions vr_options = { .resolution = 2048, .world_scale = 1.0, .cockpit = true };
 static bool eye_active;
 static double eye_delta[3], object_units = 1.0, queued_units[50];
 
@@ -118,16 +118,16 @@ void vr_translate_object(void)
         DSSL(0x7CA2+4*k)+=(s32)llround(d);
     }
 }
-void vr_capture_desktop(const uint32_t *src,int w,int h,uint32_t out[320*200])
+void vr_capture_desktop(const uint32_t *src,int w,int h,uint32_t *out,int scale)
 {
-    int fx=0,fy=0,n=1;
-    if(enh_canvas_active() && w==enh_cv.lw && h==enh_cv.lh) { fx=enh_cv.fx; fy=enh_cv.fy; n=enh_cv.n; }
-    for(int y=0;y<200;y++) for(int x=0;x<320;x++) {
-        int sx=fx+x*n,sy=fy+y*n;
-        if(w==320 && h==200) {sx=x;sy=y;}
-        out[y*320+x]=(sx>=0 && sx<w && sy>=0 && sy<h)?src[sy*w+sx]:0;
+    const int ow=320*scale,oh=200*scale;
+    const bool canvas=enh_canvas_active() && w==enh_cv.lw && h==enh_cv.lh;
+    for(int y=0;y<oh;y++) for(int x=0;x<ow;x++) {
+        int sx=canvas?enh_cv.fx+x*enh_cv.n/scale:x*w/ow;
+        int sy=canvas?enh_cv.fy+y*enh_cv.n/scale:y*h/oh;
+        out[y*ow+x]=(sx>=0 && sx<w && sy>=0 && sy<h)?src[sy*w+sx]:0;
     }
-    if (enh_vr_ready()) enh_vr_hud_alpha(out);
+    if (canvas && enh_vr_ready()) enh_vr_hud_alpha(out,scale);
 }
 int vr_selftest(void)
 {
@@ -153,6 +153,16 @@ int vr_selftest(void)
     CHECK(fabs(eye_delta[0]+0.032/(VR_METRES_PER_UNIT*vr_options.world_scale))<1e-8,"left eye has physical IPD offset");
     CHECK(fabs(eye_delta[0])<1 && eye_delta[0]!=0,"sub-foot eye displacement is retained");
     vr_eye_end();
+    /* High-resolution capture must retain every source pixel rather than reduce to 320x200. */
+    const size_t pixels=640u*400u;
+    u32 *source=malloc(pixels*sizeof(u32)),*captured=malloc(pixels*sizeof(u32));
+    CHECK(source && captured,"panel test allocation");
+    if(source && captured) {
+        for(size_t i=0;i<pixels;i++) source[i]=(u32)(i*0x010203u)&0xFFFFFF;
+        vr_capture_desktop(source,640,400,captured,2);
+        CHECK(!memcmp(source,captured,pixels*sizeof(u32)),"2x panel capture retains all high-resolution pixels");
+    }
+    free(source);free(captured);
     if(!fail) puts("vr-selftest OK");
     return fail?1:0;
 }
@@ -176,6 +186,13 @@ void vr_scene_check(void)
     if(!enh_vr_render(&eye,c,size,size)) exit(3);
     size_t stereo=0,turned=0;
     for(size_t i=0;i<bytes/4;i++) {stereo+=a[i]!=b[i];turned+=b[i]!=c[i];}
+    /* An intervening eye and head rotation must not leave stale pixels on reused layers. */
+    eye=(VrPose){{0,0,0,1},{-0.032,0,0}};
+    u32 *repeat=malloc(bytes);
+    if(!repeat || !enh_vr_render(&eye,repeat,size,size) || memcmp(a,repeat,bytes)) {
+        fputs("VR scene test: scratch eye layers retained pixels from another pose\n",stderr);exit(3);
+    }
+    free(repeat);
     for(int i=0;i<3;i++) {
         char path[1200];snprintf(path,sizeof path,"%s/%s.png",vr_options.scene_test,i==0?"left":i==1?"right":"head-left");
         SDL_Surface *s=SDL_CreateSurfaceFrom(size,size,SDL_PIXELFORMAT_XRGB8888,i==0?a:i==1?b:c,size*4);

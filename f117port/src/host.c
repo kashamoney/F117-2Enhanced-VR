@@ -132,8 +132,8 @@ bool host_init(const HostConfig *cfg)
         return false;
     }
     int scale = cfg->scale < 1 ? 3 : cfg->scale;
-    if (!SDL_CreateWindowAndRenderer("F-117A Nighthawk Stealth Fighter 2.0", vr_enabled() ? vr_options.resolution : 320 * scale,
-                                     vr_enabled() ? vr_options.resolution : (aspect43 ? 240 : 200) * scale,
+    if (!SDL_CreateWindowAndRenderer("F-117A Nighthawk Stealth Fighter 2.0", vr_enabled() ? SDL_min(vr_options.resolution,1024) : 320 * scale,
+                                     vr_enabled() ? SDL_min(vr_options.resolution,1024) : (aspect43 ? 240 : 200) * scale,
                                      vr_enabled() ? 0 : SDL_WINDOW_RESIZABLE, &window, &renderer)) { /* ENH: fixed eye canvas */
         fprintf(stderr, "window/renderer failed: %s\n", SDL_GetError());
         return false;
@@ -211,6 +211,7 @@ static void canvas_sync(void)
     if (!enh_canvas_active()) return;
     int ww = nominal_w, wh = nominal_h;
     if (window && !headless) SDL_GetWindowSizeInPixels(window, &ww, &wh);
+    if (vr_enabled()) ww=wh=vr_options.resolution;    /* ENH: eye resolution is independent of the desktop mirror's size */
     enh_canvas_update(ww, wh, aspect43);
     if (enh_present_hold()) return;                       /* ENH: S3.4 fix 4, the last picture stays on screen until the new view's first frame */
     if (enh_cv.lw != frame_w || enh_cv.lh != frame_h) { host_resize_frame(enh_cv.lw, enh_cv.lh); repaint = true; }

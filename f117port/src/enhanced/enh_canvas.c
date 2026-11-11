@@ -44,18 +44,25 @@ static EnhView menu_saved;
 
 static Shadow sh_buf[2][PAGE_PIXELS];
 static Shadow *sh_work = sh_buf[0], *sh_shown = sh_buf[1];  /* pointers, so a display pass can swap them (S2.4, enh_canvas_snap_swap) */
+static u16 *l3d_work, *l3d_shown, *lvec_work, *lvec_shown;   /* lw * lh each; bit 8 = written */
 
 /* ENH: exported HUD texture alpha comes from the compositor's real drawing provenance.
  * Terrain can use the same green as the HUD, so colour-keying alone is insufficient. */
-void enh_vr_hud_alpha(u32 *frame)
+void enh_vr_hud_alpha(u32 *frame, int scale)
 {
-    for (int i = 0; i < 320 * 91; i++) {
-        const Shadow *s = &sh_shown[i];
+    const int width=320*scale;
+    for (int y=0;y<91*scale;y++) for (int x=0;x<width;x++) {
+        const Shadow *s = &sh_shown[(y/scale)*320+x/scale];
         const bool vector = s->src == SRC_VEC || s->src == SRC_VECHR;
-        frame[i] = (frame[i] & 0xFFFFFF) | ((vector && (frame[i] & 0xFFFFFF)) ? 0xFF000000u : 0);
+        bool written=vector;
+        if (s->src==SRC_VECHR && lvec_shown) {
+            const size_t at=(size_t)(enh_cv.fy+y*enh_cv.n/scale)*enh_cv.lw+enh_cv.fx+x*enh_cv.n/scale;
+            written=(lvec_shown[at]&0x100)!=0;
+        }
+        const int i=y*width+x;
+        frame[i] = (frame[i] & 0xFFFFFF) | ((written && (frame[i] & 0xFFFFFF)) ? 0xFF000000u : 0);
     }
 }
-static u16 *l3d_work, *l3d_shown, *lvec_work, *lvec_shown;   /* lw * lh each; bit 8 = written */
 static u8 *l3n_work, *l3n_shown;                             /* S3.6 (DESIGN 2.12): the night plane of the 3D layer, 0 = as the original, else the factor / 256 */
 static size_t layer_px, layer_cap;                           /* layer_cap: the pixels the four buffers hold (>= layer_px) */
 
@@ -1356,6 +1363,22 @@ bool enh_canvas_snap_take(EnhCanvasSnap *d)
     EnhCanvasSnap live;
     snap_get_live(&live);
     return enh_canvas_snap_copy(d, &live);
+}
+
+/* ENH: stereo draws an entire square world on scratch layers. The main 320x200
+ * window is cleared by enh_pass_clear and all its surroundings by the wide pass.
+ * Copying six large pixel planes that will immediately be overwritten wastes
+ * memory bandwidth at headset resolution. Keep the general snapshot path exact;
+ * only these full-world eye passes may use this scratch preparation. */
+bool enh_canvas_snap_for_eye(EnhCanvasSnap *d, const EnhCanvasSnap *s)
+{
+    if (!d->sh_work || !d->sh_shown || d->cap < s->layer_px)
+        return enh_canvas_snap_copy(d,s);
+    memcpy(d->sh_work,s->sh_work,PAGE_PIXELS*sizeof(Shadow));
+    memcpy(d->sh_shown,s->sh_shown,PAGE_PIXELS*sizeof(Shadow));
+    d->cv=s->cv;d->active=s->active;d->shadow_on=s->shadow_on;d->view=s->view;d->route=s->route;
+    d->layer_px=s->layer_px;
+    return true;
 }
 
 void enh_canvas_snap_swap(EnhCanvasSnap *s)

@@ -4,7 +4,7 @@ param(
     [switch]$Diagnostic,
     [switch]$DumpEyes,
     [switch]$CarrierPractice,
-    [ValidateRange(640,2048)][int]$Resolution = 1024,
+    [ValidateRange(640,2048)][int]$Resolution = 2048,
     [ValidateRange(0.1,10)][double]$WorldScale = 1.0,
     [string]$GameDirectory
 )
