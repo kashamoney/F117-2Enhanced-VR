@@ -15,4 +15,5 @@ if ($LASTEXITCODE -ne 0) { throw 'CMake configuration failed.' }
 if ($LASTEXITCODE -ne 0) { throw 'Compilation failed.' }
 & ctest --test-dir $buildPath --output-on-failure -R '^(chain|keymap|tick_rate|check_missing_files|platform|video_selftest|compose|enh_interp_rules|enh_wide_geometry|enh_vr_math)$'
 if ($LASTEXITCODE -ne 0) { throw 'Build checks failed.' }
-Write-Output "Ready: $(Join-Path $buildPath 'f117-enhanced.exe')"
+$exeName = if ($DesktopOnly) { 'f117-enhanced.exe' } else { 'f117-enhanced-vr.exe' }
+Write-Output "Ready: $(Join-Path $buildPath $exeName)"

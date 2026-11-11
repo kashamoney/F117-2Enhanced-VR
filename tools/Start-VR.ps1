@@ -4,7 +4,7 @@ param(
     [switch]$Diagnostic,
     [switch]$DumpEyes,
     [switch]$CarrierPractice,
-    [ValidateRange(640,2048)][int]$Resolution = 2048,
+    [ValidateRange(640,4096)][int]$Resolution = 4096,
     [ValidateRange(0.1,10)][double]$WorldScale = 1.0,
     [string]$GameDirectory
 )
@@ -12,7 +12,7 @@ $ErrorActionPreference = 'Stop'
 $previousKeyScript = $env:F117_KEYS
 $previousShellScript = $env:F117_SHELL_SCRIPT
 $repoPath = Split-Path -Parent $PSScriptRoot
-$exePath = Join-Path $repoPath 'f117port\build-vr\f117-enhanced.exe'
+$exePath = Join-Path $repoPath 'f117port\build-vr\f117-enhanced-vr.exe'
 if (-not (Test-Path -LiteralPath $exePath)) { & (Join-Path $PSScriptRoot 'Build-VR.ps1') }
 if (-not $GameDirectory) { $GameDirectory = Join-Path (Split-Path -Parent $repoPath) 'F117-Enhanced-play\Game' }
 $sessionPath = Join-Path $repoPath 'work\vr-session'

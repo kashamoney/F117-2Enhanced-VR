@@ -74,6 +74,7 @@ int enh_parse_arg(int argc, char **argv, int i)
         if (!strcmp(argv[i + 1], "fine")) enh.dither_fine = !enh.classic;
         else if (!strcmp(argv[i + 1], "grid")) enh.dither_fine = false;
         else return 0;
+        enh.dither_explicit = true; /* ENH: an explicit user choice takes precedence over VR's fine default */
         return 2;
     }
     if (!strcmp(argv[i], "--hr-check")) { if (!enh.classic) enh.hr_check = true; return 1; }

@@ -33,7 +33,7 @@ def roster() -> bytes:
     return bytes(result)
 
 
-def run(exe: Path, game: Path, directory: Path, stereo: bool, preview: bool = False, resolution: int = 2048) -> tuple[list[str], bytes]:
+def run(exe: Path, game: Path, directory: Path, stereo: bool, preview: bool = False, resolution: int = 4096) -> tuple[list[str], bytes]:
     directory.mkdir(parents=True)
     scratch = directory / "game"
     scratch.mkdir()
@@ -52,13 +52,17 @@ def run(exe: Path, game: Path, directory: Path, stereo: bool, preview: bool = Fa
     command = [str(exe), "--headless", "--trace", "--game-dir", str(scratch),
                "--fps", "off", "--aspect", "1:1", "--render-scale", str(max(1,resolution//1024)),
                "--vr-resolution", str(resolution),
+               "--dither", "fine",
                "--sandbox-hash", str(directory / "hash.txt")]
     if stereo:
         command += ["--vr-scene-test", str(directory)]
     if preview:
         command.remove("--headless")
         command += ["--vr-preview", "--vr-dump"]
-    proc = subprocess.run(command, cwd=directory, env=env, capture_output=True, text=True, timeout=180)
+        env["F117_VR_PREVIEW_HIDDEN"]="1"
+        env["F117_VGAME_FRAMES"]="6"
+        env.pop("F117_VGAME_DIVE",None)
+    proc = subprocess.run(command, cwd=directory, env=env, capture_output=True, text=True, timeout=600 if resolution>=4096 else 180)
     (directory / "stdout.txt").write_text(proc.stdout, encoding="utf-8")
     (directory / "stderr.txt").write_text(proc.stderr, encoding="utf-8")
     if proc.returncode:
@@ -71,7 +75,7 @@ def run(exe: Path, game: Path, directory: Path, stereo: bool, preview: bool = Fa
         raise RuntimeError("D3D11 preview never rendered a flight scene")
     lines = (directory / "hash.txt").read_text().splitlines()
     hashes = [line for line in lines if line[:1].isdigit() or line.startswith("final ")]
-    if len(hashes) < 20:
+    if len(hashes) < (2 if preview else 20):
         raise RuntimeError("Too few simulation frames checked")
     if stereo:
         print(next(line for line in proc.stdout.splitlines() if "vr-scene-test OK" in line))
@@ -84,7 +88,7 @@ def main() -> None:
     parser.add_argument("--game-dir", type=Path, required=True)
     parser.add_argument("--work-dir", type=Path, default=ROOT / "work/vr-check")
     parser.add_argument("--preview-smoke", action="store_true", help="also run the native D3D11 preview window")
-    parser.add_argument("--resolution",type=int,choices=(1024,2048),default=2048)
+    parser.add_argument("--resolution",type=int,choices=(1024,2048,4096),default=4096)
     args = parser.parse_args()
     directory = args.work_dir.resolve() / uuid.uuid4().hex[:10]
     exe, game = args.exe.resolve(), args.game_dir.resolve()

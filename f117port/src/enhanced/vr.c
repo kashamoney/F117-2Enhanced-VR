@@ -11,7 +11,7 @@
 
 #define VR_PI 3.14159265358979323846
 #define VR_METRES_PER_UNIT (512000.0 / 1048576.0)
-VrOptions vr_options = { .resolution = 2048, .world_scale = 1.0, .cockpit = true };
+VrOptions vr_options = { .resolution = 4096, .world_scale = 1.0, .cockpit = true };
 static bool eye_active;
 static double eye_delta[3], object_units = 1.0, queued_units[50];
 
@@ -32,8 +32,8 @@ int vr_parse_arg(int argc, char **argv, int i)
         char *end;
         double n = strtod(argv[i + 1], &end);
         bool res = !strcmp(a, "--vr-resolution");
-        if (end == argv[i+1] || *end || !isfinite(n) || n < (res ? 640 : 0.1) || n > (res ? 2048 : 10) || (res && n != floor(n))) {
-            fprintf(stderr, "%s: expected %s\n", a, res ? "integer 640..2048" : "number 0.1..10");
+        if (end == argv[i+1] || *end || !isfinite(n) || n < (res ? 640 : 0.1) || n > (res ? 4096 : 10) || (res && n != floor(n))) {
+            fprintf(stderr, "%s: expected %s\n", a, res ? "integer 640..4096" : "number 0.1..10");
             exit(2);
         }
         if (res) vr_options.resolution = (int)n; else vr_options.world_scale = n;
@@ -154,15 +154,17 @@ int vr_selftest(void)
     CHECK(fabs(eye_delta[0])<1 && eye_delta[0]!=0,"sub-foot eye displacement is retained");
     vr_eye_end();
     /* High-resolution capture must retain every source pixel rather than reduce to 320x200. */
-    const size_t pixels=640u*400u;
-    u32 *source=malloc(pixels*sizeof(u32)),*captured=malloc(pixels*sizeof(u32));
-    CHECK(source && captured,"panel test allocation");
-    if(source && captured) {
-        for(size_t i=0;i<pixels;i++) source[i]=(u32)(i*0x010203u)&0xFFFFFF;
-        vr_capture_desktop(source,640,400,captured,2);
-        CHECK(!memcmp(source,captured,pixels*sizeof(u32)),"2x panel capture retains all high-resolution pixels");
+    for(int scale=1;scale<=4;scale*=2) {
+        const size_t pixels=(size_t)(320*scale)*(200*scale);
+        u32 *source=malloc(pixels*sizeof(u32)),*captured=malloc(pixels*sizeof(u32));
+        CHECK(source && captured,"panel test allocation");
+        if(source && captured) {
+            for(size_t i=0;i<pixels;i++) source[i]=(u32)(i*0x010203u)&0xFFFFFF;
+            vr_capture_desktop(source,320*scale,200*scale,captured,scale);
+            CHECK(!memcmp(source,captured,pixels*sizeof(u32)),"panel capture retains every pixel at 1x, 2x and 4x");
+        }
+        free(source);free(captured);
     }
-    free(source);free(captured);
     if(!fail) puts("vr-selftest OK");
     return fail?1:0;
 }

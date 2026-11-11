@@ -34,6 +34,7 @@ target_link_libraries(f117 PRIVATE SDL3::SDL3 nuked_opl3)
 # ENH: explicit opt-in; the normal desktop build has no OpenXR or D3D11 dependency.
 option(F117_OPENXR "Build the Windows OpenXR headset and stereo preview backend" OFF)
 if(F117_OPENXR)
+    set_target_properties(f117 PROPERTIES OUTPUT_NAME f117-enhanced-vr) # ENH: distinct VR executable; desktop builds retain their name
     if(NOT WIN32)
         message(FATAL_ERROR "The initial VR backend requires Windows and Direct3D 11")
     endif()

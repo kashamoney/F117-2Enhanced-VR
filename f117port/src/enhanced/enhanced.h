@@ -12,6 +12,7 @@ typedef struct {
                           * beyond the 320x200 frame (DESIGN 3), every other view is the whole picture fitted and centred */
     int  compose_test;   /* --compose-test (1): headless check of the canvas geometry and the compositor; --wide-geometry-test (2, S3.4): the placement per view and window; --interp-test (3, S4.2) */
     bool dither_fine;    /* --dither fine: the 3D checkerboard per layer pixel; --dither grid (default): per original pixel (DESIGN 2.4, Q2) */
+    bool dither_explicit;/* ENH: preserve an explicit --dither choice when selecting the VR default */
     bool hr_check;       /* --hr-check: the render test (--render-test) also checks the hr 3D layer against the 1x page (DIR/hr_check.txt) */
     char hr_dump[1024];  /* --hr-dump DIR (implies --hr-check): per render-test scenario DIR/<id>.hrd: the hr trace, the layer, the page (S2.3) */
     int  sandbox_test;   /* --sandbox-test N: N sandboxed display passes per VGAME frame, nothing shown (S2.4 test; S4.1 runs them for real) */

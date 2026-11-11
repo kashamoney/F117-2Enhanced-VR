@@ -134,7 +134,8 @@ bool host_init(const HostConfig *cfg)
     int scale = cfg->scale < 1 ? 3 : cfg->scale;
     if (!SDL_CreateWindowAndRenderer("F-117A Nighthawk Stealth Fighter 2.0", vr_enabled() ? SDL_min(vr_options.resolution,1024) : 320 * scale,
                                      vr_enabled() ? SDL_min(vr_options.resolution,1024) : (aspect43 ? 240 : 200) * scale,
-                                     vr_enabled() ? 0 : SDL_WINDOW_RESIZABLE, &window, &renderer)) { /* ENH: fixed eye canvas */
+                                     vr_enabled() ? (vr_options.mode==2 && SDL_getenv("F117_VR_PREVIEW_HIDDEN") ? SDL_WINDOW_HIDDEN : 0)
+                                                  : SDL_WINDOW_RESIZABLE, &window, &renderer)) { /* ENH: fixed eye canvas; optional hidden GPU test */
         fprintf(stderr, "window/renderer failed: %s\n", SDL_GetError());
         return false;
     }
