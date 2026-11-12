@@ -34,6 +34,7 @@ def main():
     p.add_argument('--samples', type=int, choices=(1,2,4,8), help='limit GPU MSAA for before/after comparisons (default 8)')
     p.add_argument('--headset', action='store_true')
     p.add_argument('--validate', action='store_true', help='also compare GPU/software image interiors (requires numpy and Pillow)')
+    p.add_argument('--hud-check', action='store_true', help='check original HUD text/vector coverage on a blank background')
     p.add_argument('--temporal', action='store_true', help='capture and check a frozen airborne roll sweep')
     p.add_argument('--pacing', action='store_true', help='use the real simulation clock and trace both submitted eye poses')
     p.add_argument('--capture-live', action='store_true', help='with --pacing, save 180 live stereo mirror frames at shutdown')
@@ -47,8 +48,8 @@ def main():
         a.frames = 900 if a.pacing else 30
     if not 1 <= a.frames <= 900 or a.hz <= 0 or (a.warmup is not None and not 0 <= a.warmup <= 900):
         p.error('Use 1..900 frames, a positive refresh rate, and 0..900 warmup frames')
-    if (a.validate or a.temporal or a.samples is not None) and a.software:
-        p.error('--validate, --temporal and --samples require the GPU renderer')
+    if (a.validate or a.temporal or a.hud_check or a.samples is not None) and a.software:
+        p.error('--validate, --temporal, --hud-check and --samples require the GPU renderer')
     if a.validate and a.temporal:
         p.error('Run carrier validation and the airborne temporal capture separately')
     if (a.pacing and (a.temporal or a.validate)) or (a.capture_live and not a.pacing):
@@ -73,6 +74,8 @@ def main():
         env['F117_VR_VALIDATE'] = '1'
     if a.samples is not None:
         env['F117_VR_SAMPLES'] = str(a.samples)
+    if a.hud_check:
+        env['F117_VR_HUD_CHECK'] = '1'
     if a.temporal:
         env.update(F117_VR_TEMPORAL='1',F117_TEST_POSE='6,0,1500,0',
                    F117_VR_CAPTURE_SIZE=str(a.capture_size),F117_VR_CAPTURE_STEPS=str(a.capture_steps))
@@ -85,7 +88,7 @@ def main():
            '--game-dir', str(game), '--fps', 'vsync' if a.pacing else 'off', '--dither', 'fine']
     if a.software:
         cmd += ['--vr-software']
-    if a.validate or a.temporal:
+    if a.validate or a.temporal or a.hud_check:
         cmd += ['--vr-dump']
     result = subprocess.run(cmd, cwd=directory, env=env, capture_output=True, text=True, timeout=120)
     (directory / 'stdout.txt').write_text(result.stdout, encoding='utf-8')

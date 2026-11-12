@@ -608,6 +608,89 @@ bool enh_vr_ready(void)
         && prog_current_id() == PROG_VGAME;
 }
 static double vr_alpha;
+static void vr_restore(void)
+{
+    enh_sbx=false;image_load(&img_live);enh_canvas_snap_swap(&cv_scratch);
+    if(vr_options.scene_test[0]){
+        const u8 *saved=img_live.buf;
+        for(int i=0;i<nreg;i++){
+            if(memcmp(saved,reg[i].p,reg[i].n)){fprintf(stderr,"VR render leaked engine state in region %d\n",i);exit(3);}
+            saved+=reg[i].n;
+        }
+    }
+}
+/* Draw the original bitmap text, keyed symbols and enhanced vector lines onto
+ * an empty canvas. No scenery/cockpit art enters this texture, and drawing tags
+ * from a different canonical/display pass cannot cut holes in its alpha. */
+bool enh_vr_hud_render(u32 *out,int scale)
+{
+    if(!out||!enh_vr_ready()||scale!=enh_cv.n)return false;
+    static u32 *canvas;static size_t capacity;
+    const size_t pixels=(size_t)enh_cv.lw*enh_cv.lh;
+    if(capacity<pixels){
+        u32 *p=realloc(canvas,pixels*sizeof(u32));if(!p)return false;
+        canvas=p;capacity=pixels;
+    }
+    if(!image_save(&img_live)||!enh_canvas_snap_for_eye(&cv_scratch,&img_a.cv))return false;
+    enh_canvas_snap_swap(&cv_scratch);image_load(&img_a);enh_sbx=true;
+    enh_interp_apply(vr_alpha);
+    enh_layers_reset();
+    DSW(0xC07A)=0;DSW(0x365E)=1;DSB(0x294B)=0;DSB(0x4088)=1;
+    DSW(0xDEDA)=0; /* the MFD scope is already in the live instrument texture */
+    /* Force the back-page contexts without flipping compositor caches. The
+     * driver flag and every engine write below are restored with img_live. */
+    bool shadow=enh_shadow_on;enh_shadow_on=false;flip(0);enh_shadow_on=shadow;
+    page_select(1);memset(seg_ptr(video_page_seg(1)),0,320*91);
+    hud_overlay_frame();hud_draw_far();
+    u8 dac[768];u32 pal[256];dac_get(0,256,dac);
+    for(int i=0;i<256;i++)pal[i]=((u32)((dac[3*i]<<2)|(dac[3*i]>>4))<<16)
+        |((u32)((dac[3*i+1]<<2)|(dac[3*i+1]>>4))<<8)|((dac[3*i+2]<<2)|(dac[3*i+2]>>4));
+    enh_compose_work(canvas,seg_ptr(video_page_seg(1)),pal,true);
+    const int width=320*scale;
+    for(int y=0;y<91*scale;y++)for(int x=0;x<width;x++){
+        u32 rgb=canvas[(size_t)(enh_cv.fy+y)*enh_cv.lw+enh_cv.fx+x]&0xFFFFFF;
+        out[(size_t)y*width+x]=rgb|(rgb?0xFF000000u:0);
+    }
+    vr_restore();
+    return true;
+}
+bool enh_vr_hud_check(void)
+{
+    if(!enh_vr_ready()||!image_save(&img_live)||!enh_canvas_snap_copy(&cv_scratch,&img_a.cv))return false;
+    enh_canvas_snap_swap(&cv_scratch);image_load(&img_a);enh_sbx=true;
+    const int n=enh_cv.n,w=320*n,h=200*n;
+    u32 *full=calloc((size_t)enh_cv.lw*enh_cv.lh,sizeof(u32));
+    u32 *hud=calloc((size_t)w*h,sizeof(u32)),*masked=calloc((size_t)w*h,sizeof(u32));
+    bool ok=full&&hud&&masked;
+    unsigned ink=0,missing=0,extra=0;
+    if(ok){
+        enh_interp_apply(vr_alpha);
+        enh_layers_reset();
+        DSW(0xC07A)=0;DSW(0x365E)=1;DSB(0x294B)=0;DSB(0x4088)=1;
+        bool shadow=enh_shadow_on;enh_shadow_on=false;flip(0);enh_shadow_on=shadow;
+        page_select(1);memset(seg_ptr(video_page_seg(1)),0,320*91);
+        hud_overlay_frame();hud_draw_far();
+        u8 dac[768];u32 pal[256];dac_get(0,256,dac);
+        for(int i=0;i<256;i++)pal[i]=((u32)((dac[3*i]<<2)|(dac[3*i]>>4))<<16)
+            |((u32)((dac[3*i+1]<<2)|(dac[3*i+1]>>4))<<8)|((dac[3*i+2]<<2)|(dac[3*i+2]>>4));
+        enh_compose_work(full,seg_ptr(video_page_seg(1)),pal,true);
+        vr_capture_desktop(full,enh_cv.lw,enh_cv.lh,hud,n); /* no mask inside a sandbox */
+    }
+    vr_restore();
+    if(ok)ok=enh_vr_hud_render(masked,n);
+    if(ok){
+        for(int y=0;y<91*n;y++)for(int x=0;x<w;x++)if(hud[y*w+x]&0xFFFFFF){
+            ink++;if(!(masked[y*w+x]>>24)||(masked[y*w+x]&0xFFFFFF)!=hud[y*w+x])missing++;
+        }else if(masked[y*w+x]>>24)extra++;
+        SDL_Surface *s=SDL_CreateSurfaceFrom(w,91*n,SDL_PIXELFORMAT_XRGB8888,hud,w*4);
+        if(s){SDL_SavePNG(s,"vr-hud-reference.png");SDL_DestroySurface(s);}
+        s=SDL_CreateSurfaceFrom(w,91*n,SDL_PIXELFORMAT_ARGB8888,masked,w*4);
+        if(s){SDL_SavePNG(s,"vr-hud-masked.png");SDL_DestroySurface(s);}
+        fprintf(stderr,"VR HUD coverage: %u / %u original HUD pixels survive (%u missing, %u background pixels leaked)\n",ink-missing,ink,missing,extra);
+        ok=ink>100&&missing==0&&extra==0;
+    }
+    free(full);free(hud);free(masked);return ok;
+}
 static VrFrameState vr_rendered;
 VrFrameState enh_vr_frame_state(void) { return vr_rendered; }
 void enh_vr_frame(void) { vr_alpha = enh_interp_lerp()?vr_clock_sample(&vr_clock,dclock()):1.0; }
@@ -646,16 +729,7 @@ bool enh_vr_render(const VrPose *eye, u32 *out, int w, int h)
     else enh_compose_work(out, seg_ptr(enh_hr.seg), pal, true);
     vr_eye_end();
     enh_wide_on = enh_wide_pt = enh_wide_pass = false;
-    enh_sbx = false;
-    image_load(&img_live);
-    enh_canvas_snap_swap(&cv_scratch);
-    if (vr_options.scene_test[0]) {                           /* ENH: compare actual engine regions after every tested eye */
-        const u8 *saved = img_live.buf;
-        for (int i = 0; i < nreg; i++) {
-            if (memcmp(saved, reg[i].p, reg[i].n)) { fprintf(stderr, "VR eye leaked engine state in region %d\n", i); exit(3); }
-            saved += reg[i].n;
-        }
-    }
+    vr_restore();
     return true;
 }
 

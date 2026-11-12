@@ -46,27 +46,6 @@ static Shadow sh_buf[2][PAGE_PIXELS];
 static Shadow *sh_work = sh_buf[0], *sh_shown = sh_buf[1];  /* pointers, so a display pass can swap them (S2.4, enh_canvas_snap_swap) */
 static u16 *l3d_work, *l3d_shown, *lvec_work, *lvec_shown;   /* lw * lh each; bit 8 = written */
 
-/* ENH: exported HUD texture alpha comes from the compositor's real drawing provenance.
- * Terrain can use the same green as the HUD, so colour-keying alone is insufficient. */
-void enh_vr_hud_alpha(u32 *frame, int scale)
-{
-    const int width=320*scale;
-    for (int y=0;y<91*scale;y++) {
-        const Shadow *shadow=sh_shown+(y/scale)*320;
-        const size_t row=(size_t)(enh_cv.fy+y*enh_cv.n/scale)*enh_cv.lw;
-        for (int bx=0;bx<320;bx++) {
-            const Shadow *s=shadow+bx;
-            const bool vector=s->src==SRC_VEC || s->src==SRC_VECHR;
-            for(int k=0;k<scale;k++) {
-                const int x=bx*scale+k,i=y*width+x;
-                bool written=vector;
-                if(s->src==SRC_VECHR && lvec_shown)
-                    written=(lvec_shown[row+enh_cv.fx+x*enh_cv.n/scale]&0x100)!=0;
-                frame[i]=(frame[i]&0xFFFFFF)|((written && (frame[i]&0xFFFFFF))?0xFF000000u:0);
-            }
-        }
-    }
-}
 static u8 *l3n_work, *l3n_shown;                             /* S3.6 (DESIGN 2.12): the night plane of the 3D layer, 0 = as the original, else the factor / 256 */
 static size_t layer_px, layer_cap;                           /* layer_cap: the pixels the four buffers hold (>= layer_px) */
 

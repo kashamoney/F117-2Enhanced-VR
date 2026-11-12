@@ -140,6 +140,8 @@ public:
     bool gpuWorld=vr_use_gpu();
     std::vector<uint32_t> pixels[2];
     std::vector<uint32_t> panelPixels;
+    Image hud;
+    std::vector<uint32_t> hudPixels;
     std::vector<V> vertices;
     VrPose previewHead{{0,0,0,1},{0,0,0}};
     double previewYaw=0,previewPitch=0;
@@ -153,7 +155,7 @@ public:
     Uint64 benchStarted=0;
     double benchMS=0;
     size_t benchBytes=0;
-    double benchPanel=0,benchGeometry=0,benchDraw=0,benchPresent=0;
+    double benchPanel=0,benchHUD=0,benchGeometry=0,benchDraw=0,benchPresent=0;
     bool panelDirty=true,panelFlight=false;
     bool targetSRGB=true;
     FILE *log=nullptr;
@@ -485,8 +487,8 @@ public:
         context->OMSetBlendState(nullptr,nullptr,~0u);context->OMSetDepthStencilState(depthState.Get(),0);
         /* Prototype HUD: original vector symbology on an aircraft-fixed transparent plane.
          * It is finite-depth, not an optical collimated HUD. This is documented for headset QA. */
-        quad(eye,f,{{{-0.6211,0.2708,-1.0},{0.6289,0.2708,-1.0},{0.6289,-0.2031,-1.0},{-0.6211,-0.2031,-1.0}}},white,0,0,1,91.0f/200);
-        draw(2,f,&panel);
+        quad(eye,f,{{{-0.6211,0.2708,-1.0},{0.6289,0.2708,-1.0},{0.6289,-0.2031,-1.0},{-0.6211,-0.2031,-1.0}}},white);
+        draw(2,f,&hud);
     }
     void poll() {
         XrEventDataBuffer event{XR_TYPE_EVENT_DATA_BUFFER};
@@ -579,6 +581,7 @@ public:
     }
     void dumpGpuEyes(const std::array<VrPose,2> &poses,const std::array<VrFov,2> &fovs,int w,int h) {
         if(!vr_options.dump||dumped||!vr_scene_initialized())return;
+        if(SDL_getenv("F117_VR_HUD_CHECK")&&!enh_vr_hud_check())throw std::runtime_error("VR HUD export discarded original symbols");
         VrSceneInfo info;vr_scene_info(&info);
         if(FILE *file=std::fopen("vr-scene.json","w")) {
             std::fprintf(file,"{\"site\":%d,\"carrier\":%d,\"deck\":%d,\"aircraft\":%d,\"camera\":%d}\n",info.site,info.carrier,info.deck,info.aircraft,info.camera);std::fclose(file);
@@ -695,11 +698,16 @@ public:
             panelDirty=false;panelFlight=flight;
         }
         const Uint64 panelDone=SDL_GetTicksNS();
-        double geometryMS=0;
+        double geometryMS=0,hudMS=0;
         const int size=vr_canvas_resolution();
         std::array<VrFrameState,2> states{};
         if(flight) {
             enh_vr_frame(); // latch one alpha for both eyes
+            Uint64 hudStart=SDL_GetTicksNS();
+            hudPixels.resize(size_t(320*panelScale)*91*panelScale);
+            if(!enh_vr_hud_render(hudPixels.data(),panelScale))throw std::runtime_error("HUD render failed");
+            upload(hud,hudPixels.data(),320*panelScale,91*panelScale);
+            hudMS=(SDL_GetTicksNS()-hudStart)/1e6;
             for(int i=0;i<2;i++) {
                 if(gpuWorld) {
                     vr_gpu_begin(&geometry[i]);
@@ -776,8 +784,8 @@ public:
             if(benchFrames==benchWarmup)benchStarted=workStarted;
             if(benchFrames++>=benchWarmup) {
                 benchMS+=(lastFrame-workStarted)/1e6;benchBytes+=uploadBytes;
-                benchPanel+=(panelDone-workStarted)/1e6;benchGeometry+=geometryMS;
-                benchDraw+=(worldDone-panelDone)/1e6-geometryMS;benchPresent+=(lastFrame-worldDone)/1e6;
+                benchPanel+=(panelDone-workStarted)/1e6;benchHUD+=hudMS;benchGeometry+=geometryMS;
+                benchDraw+=(worldDone-panelDone)/1e6-geometryMS-hudMS;benchPresent+=(lastFrame-worldDone)/1e6;
             }
             if(benchFrames==benchTarget+benchWarmup) {
                 // Include completion of GPU work, once, without forcing a per-frame stall.
@@ -786,7 +794,7 @@ public:
                 while(context->GetData(q.Get(),nullptr,0,0)==S_FALSE) SDL_Delay(0);
                 benchMS+=(SDL_GetTicksNS()-lastFrame)/1e6;
                 char b[320];std::snprintf(b,sizeof b,"VR benchmark: %u stereo frames, %.3f ms/frame (render, upload, GPU completion; no XR wait); upload %.3f MiB/frame; %zu triangles, %u invalid faces; %.1f submitted frames/s",benchTarget,benchMS/benchTarget,benchBytes/double(benchTarget)/1048576.0,(geometry[0].count+geometry[1].count)/3,geometry[0].invalid+geometry[1].invalid,benchTarget*1e9/(SDL_GetTicksNS()-benchStarted));note(b);exit=true;
-                std::snprintf(b,sizeof b,"VR stages (ms/frame): panel %.3f; geometry %.3f; world GPU commands %.3f; headset/mirror %.3f",benchPanel/benchTarget,benchGeometry/benchTarget,benchDraw/benchTarget,benchPresent/benchTarget);note(b);
+                std::snprintf(b,sizeof b,"VR stages (ms/frame): panel %.3f; HUD %.3f; geometry %.3f; world GPU commands %.3f; headset/mirror %.3f",benchPanel/benchTarget,benchHUD/benchTarget,benchGeometry/benchTarget,benchDraw/benchTarget,benchPresent/benchTarget);note(b);
             }
         }
         if(lastFrame-lastStats>5*SDL_NS_PER_SECOND) {

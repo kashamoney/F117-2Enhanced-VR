@@ -65,6 +65,8 @@ VrFrameState enh_vr_frame_state(void); /* aircraft pose actually used by the las
 void vr_scene_check(void);
 /* Destination holds (320*scale)*(200*scale) pixels, preserving enhanced vectors/MFDs. */
 void vr_capture_desktop(const uint32_t *src, int w, int h, uint32_t *out, int scale);
+bool enh_vr_hud_check(void); /* original HUD drawn over an empty background, including bitmap text */
+bool enh_vr_hud_render(uint32_t *out,int scale); /* 320*scale by 91*scale RGBA, isolated from scenery */
 #ifdef __cplusplus
 }
 #endif

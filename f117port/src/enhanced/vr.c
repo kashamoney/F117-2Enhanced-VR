@@ -157,7 +157,6 @@ void vr_capture_desktop(const uint32_t *src,int w,int h,uint32_t *out,int scale)
             out[y*ow+x]=(sx>=0 && sx<w && sy>=0 && sy<h)?src[sy*w+sx]:0;
         }
     }
-    if (canvas && enh_vr_ready()) enh_vr_hud_alpha(out,scale);
 }
 int vr_selftest(void)
 {
@@ -256,6 +255,11 @@ void vr_scene_check(void)
     if(!a || !b || !c) { fputs("VR scene test allocation failed\n",stderr); exit(3); }
     VrPose eye={{0,0,0,1},{-0.032,0,0}};
     enh_vr_frame();
+    const int hn=enh_cv.n;const size_t hud_bytes=(size_t)320*91*hn*hn*sizeof(u32);
+    u32 *hud_before=malloc(hud_bytes),*hud_after=malloc(hud_bytes);
+    if(!hud_before||!hud_after||!enh_vr_hud_render(hud_before,hn)){
+        fputs("VR scene test: HUD capture failed\n",stderr);exit(3);
+    }
     if(!enh_vr_render(&eye,a,size,size) || !enh_vr_render(&eye,b,size,size) || memcmp(a,b,bytes)) {
         fputs("VR scene test: identical poses did not produce identical images\n",stderr); exit(3);
     }
@@ -272,6 +276,10 @@ void vr_scene_check(void)
         fputs("VR scene test: scratch eye layers retained pixels from another pose\n",stderr);exit(3);
     }
     free(repeat);
+    if(!enh_vr_hud_render(hud_after,hn)||memcmp(hud_before,hud_after,hud_bytes)){
+        fputs("VR scene test: HUD retained another eye's state\n",stderr);exit(3);
+    }
+    free(hud_before);free(hud_after);
     for(int i=0;i<3;i++) {
         char path[1200];snprintf(path,sizeof path,"%s/%s.png",vr_options.scene_test,i==0?"left":i==1?"right":"head-left");
         SDL_Surface *s=SDL_CreateSurfaceFrom(size,size,SDL_PIXELFORMAT_XRGB8888,i==0?a:i==1?b:c,size*4);

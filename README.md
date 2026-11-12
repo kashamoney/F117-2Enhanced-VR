@@ -76,8 +76,9 @@ stay separate from the source and the game saves your pilot roster in that worki
 Run **`Preview-VR.cmd`** for a desktop stereo preview without a headset.
 The desktop mirror shows the two square eye images side by side.
 The world now renders on the GPU at the headset's recommended eye resolution
-(**1716x1868 per eye** on this Odyssey+/Oasis setup), with 4x antialiasing where supported.
-The live panel/HUD texture retains enhanced 4x rendering at 1280x800. VR defaults to
+(**1716x1868 per eye** on this Odyssey+/Oasis setup), with 8x antialiasing where supported.
+The live panel stays 1280x800; a separate 1280x364 transparent HUD layer retains
+the original bitmap text/symbols and enhanced vector rendering. VR defaults to
 fine dithering; pass `--dither grid` directly to the executable to restore the coarse
 original checkerboard. Original bitmap artwork keeps its original detail, while vector
 instruments and the 3D world can render more sharply. The desktop mirror stays at
@@ -136,7 +137,8 @@ MSAA (falling back to 4x, 2x or 1x as supported). The default `-Resolution 0` us
 `--vr-resolution 640..4096`, sets the actual eye **height** and preserves the runtime's
 width/height ratio. For example, `-Resolution 2160` increases GPU sampling without
 increasing the CPU instrument canvas. Desktop preview defaults to 1920x1920 per eye.
-The desktop mirror stays 1024x1024 and the original live panel/HUD stays 1280x800.
+The desktop mirror stays 1024x1024, the live panel stays 1280x800, and its HUD has
+an independent transparent 1280x364 texture.
 
 The previous 4096-square software source was a workaround: the headset sampled only
 part of that image, and two full 32-bit images were uploaded every frame. The GPU
@@ -176,8 +178,11 @@ Implementation and current limits:
   head displacement. Using an unrelated two-metre offset put the camera below the carrier
   deck model and made the ship disappear. `Carrier-VR.cmd` already selects a carrier; its
   mission and pilot setup are unchanged.
-* The prototype HUD extracts symbols using the compositor's vector drawing records onto a
-  transparent, finite-distance surface. It is not a collimated optical HUD; target alignment
+* The prototype HUD runs the original bitmap/font/keyed-symbol and enhanced vector drawing
+  routines on an empty sandboxed canvas at the same interpolated aircraft pose as the eyes.
+  Its independent transparent layer includes readouts that vector-only provenance omitted;
+  scenery cannot enter it, and display/canonical drawing tags cannot cut holes in it.
+  It is not a collimated optical HUD; target alignment
   needs review in the headset. An optical HUD with a defined viewing aperture is follow-up work.
 * There are no motion-controller interactions or clickable cockpit switches. Use the existing
   keyboard or gamepad. The original gamepad handling and game rules are unchanged.
@@ -201,6 +206,19 @@ the GPU-rendered cockpit. The scene check also exercises GPU geometry capture ac
 yaw, pitch and roll, checks exact repeated-pose geometry/palette, and audits engine restoration
 throughout the mission. The integration tool accepts `--resolution 1024`, `2048`, or `4096`;
 use 1024 for a faster software reference check.
+
+The HUD coverage check compares the exported transparent layer with the original
+HUD drawn in isolation, including bitmap text and enhanced lines. It rejects
+missing/recoloured HUD pixels and any opaque background pixels:
+
+```powershell
+python tools/benchmark_vr.py --exe f117port/build-vr/f117-enhanced-vr.exe --game-dir ../F117-Enhanced-play/Game --hud-check --validate
+```
+
+The run saves `vr-hud-reference.png`, `vr-hud-masked.png` (the exported RGBA layer),
+and the usual stereo/cockpit previews. `--headset --pacing --frames 900 --hud-check`
+also checks actual runtime pacing. The integration check renders the HUD again
+after intervening eye/head poses, verifies pixel equality, and audits state restoration.
 
 A reproducible local performance check uses a hidden D3D11 preview and a disposable carrier
 mission (no pilot changes):
