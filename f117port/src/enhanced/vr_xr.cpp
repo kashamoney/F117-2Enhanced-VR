@@ -541,10 +541,12 @@ public:
         dx(device->CreateTexture2D(&d,nullptr,&inspected.texture),"cockpit inspection image");
         ComPtr<ID3D11RenderTargetView> target;dx(device->CreateRenderTargetView(inspected.texture.Get(),nullptr,&target),"cockpit inspection target");
         auto depth=createDepth(1024,1024);
-        const char *names[]={"front","left","right","rear"};
-        const double yaw[]={0,pi/2,-pi/2,pi};VrFov f{-pi/4,pi/4,pi/4,-pi/4};
-        for(int k=0;k<4;k++) {
-            VrPose p{{0,std::sin(yaw[k]/2),0,std::cos(yaw[k]/2)},{0,0,0}};
+        const char *names[]={"front","left","right","rear","front-left","front-right","up"};
+        const double yaw[]={0,pi/2,-pi/2,pi,pi/4,-pi/4,0};VrFov f{-pi/4,pi/4,pi/4,-pi/4};
+        for(int k=0;k<7;k++) {
+            const double pitch=k==6?pi/3:0;
+            VrPose p{vr_multiply({0,std::sin(yaw[k]/2),0,std::cos(yaw[k]/2)},
+                {std::sin(pitch/2),0,0,std::cos(pitch/2)}),{0,0,0}};
             vr_gpu_begin(&geometry[0]);bool ok=enh_vr_render(&p,nullptr,w,h);vr_gpu_end();
             if(!ok||geometry[0].invalid)throw std::runtime_error("Cockpit inspection world capture failed");
             renderWorld(0,f,1024,1024);
@@ -622,7 +624,7 @@ public:
         if(!ok)throw std::runtime_error("Restore native GPU eye after validation");
         int ew=preview?(vr_options.resolution?vr_options.resolution:1920):swaps[0].w;
         int eh=preview?ew:swaps[0].h;renderWorld(0,fovs[0],ew,eh);
-        dumped=true;note("Wrote native GPU eyes, matched-projection references and four enclosed-cockpit views");
+        dumped=true;note("Wrote native GPU eyes, matched-projection references and seven enclosed-cockpit views");
     }
     void dumpMirror(int size) {
         if(!vr_options.dump || !mirror || mirrorDumped)return;

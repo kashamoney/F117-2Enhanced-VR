@@ -47,6 +47,20 @@ static void beam(P a,P b,float width,C c){
     quad(add(b,p[0]),add(b,p[1]),add(b,p[2]),add(b,p[3]),c,0);
 }
 static void pane(P a,P b,P c,P d){quad(a,b,c,d,(C){.10f,.16f,.17f,.035f},1);}
+/* Inset glazing into a solid faceted surround. Keep the openings larger than
+ * the references for VR visibility, while retaining their angular outlines. */
+static void window(const P *outer,int count,float inset){
+    P center={0,0,0},inner[5];
+    for(int i=0;i<count;i++)center=add(center,outer[i]);
+    center=mul(center,1.0f/count);
+    for(int i=0;i<count;i++)inner[i]=add(outer[i],mul(sub(center,outer[i]),inset));
+    for(int i=0;i<count;i++){
+        int j=(i+1)%count;
+        quad(outer[i],outer[j],inner[j],inner[i],black,0);
+        beam(inner[i],inner[j],.008f,edge);
+    }
+    for(int i=1;i+1<count;i++)pane(inner[0],inner[i],inner[i+1],inner[i+1]);
+}
 static void bezel(float x0,float y0,float x1,float y1){
     /* Recess decorative frames behind the live art, including their buttons. */
     const float w=.009f,z=-.880f;
@@ -63,13 +77,12 @@ static void build(void){
     /* Continuous lower hull: five faces around the sides/footwell, closed at
      * both ends. The open upper edge meets the canopy sill. */
     const P section[6]={{-.70f,-.20f,0},{-.72f,-.63f,0},{-.46f,-1.02f,0},{.46f,-1.02f,0},{.72f,-.63f,0},{.70f,-.20f,0}};
-    const float stations[3]={-1.28f,-.45f,.78f},scales[3]={.78f,1,1};
+    const float stations[3]={-1.70f,-.45f,.78f},scales[3]={.78f,1,1};
     P rings[3][6];
     for(int s=0;s<3;s++)for(int i=0;i<6;i++)rings[s][i]=(P){section[i].x*scales[s],section[i].y,stations[s]};
     for(int s=0;s<2;s++)for(int i=0;i<5;i++)quad(rings[s][i],rings[s+1][i],rings[s+1][i+1],rings[s][i+1],wall,0);
     for(int s=0;s<3;s+=2)for(int i=1;i<5;i++)tri(rings[s][0],rings[s][i],rings[s][i+1],wall,0);
     quad((P){-.70f,-.20f,.78f},(P){.70f,-.20f,.78f},(P){.46f,.43f,.72f},(P){-.46f,.43f,.72f},wall,0);
-    quad((P){-.46f,.43f,.72f},(P){.46f,.43f,.72f},(P){.51f,.56f,.42f},(P){-.51f,.56f,.42f},black,0);
 
     /* Dashboard, coaming and a recessed frame around the original live panel. */
     box(-.64f,-.70f,-1.09f,.64f,-.195f,-.89f,wall);
@@ -80,22 +93,44 @@ static void build(void){
     beam((P){.61f,-.195f,-.866f},(P){.61f,-.65f,-.866f},.025f,edge);
     bezel(-.309f,-.492f,-.036f,-.278f);bezel(.032f,-.492f,.306f,-.278f);
 
-    /* Closed canopy: trapezoidal windshield, quarter panes, side windows and
-     * two roof panes. A subdued coating keeps the world visible through it. */
-    P fl={-.42f,-.14f,-1.18f},fr={.42f,-.14f,-1.18f},tl={-.40f,.50f,-.87f},tr={.40f,.50f,-.87f};
-    P sl={-.70f,-.20f,-.58f},sr={.70f,-.20f,-.58f},ul={-.58f,.54f,-.32f},ur={.58f,.54f,-.32f};
-    P bl={-.68f,-.20f,.63f},br={.68f,-.20f,.63f},rl={-.51f,.56f,.42f},rr={.51f,.56f,.42f};
-    P peak0={0,.61f,-.87f},peak1={0,.66f,.42f};
-    pane(fl,fr,tr,tl);pane(fl,tl,ul,sl);pane(fr,sr,ur,tr);
-    pane(sl,ul,rl,bl);pane(sr,br,rr,ur);
-    pane(tl,peak0,peak1,rl);pane(peak0,tr,rr,peak1);
-    pane(tl,rl,ul,tl);pane(tr,ur,rr,tr);
+    /* Aircraft-inspired canopy: raked split windscreen, triangular forward
+     * quarter lights and shorter swept side windows. The roof and aft shoulders
+     * are opaque facets, rather than an all-glass bubble. The entire windscreen
+     * stays beyond the HUD plane, including its slim center mullion. */
+    P fl={-.43f,-.18f,-1.70f},fr={.43f,-.18f,-1.70f},tl={-.36f,.49f,-1.04f},tr={.36f,.49f,-1.04f};
+    P sl={-.70f,-.20f,-.78f},sr={.70f,-.20f,-.78f},ul={-.58f,.50f,-.60f},ur={.58f,.50f,-.60f};
+    P bl={-.68f,-.20f,.30f},br={.68f,-.20f,.30f},rl={-.56f,.48f,.26f},rr={.56f,.48f,.26f};
+    P bottom={0,-.18f,-1.70f},top={0,.49f,-1.04f};
+    P peak0={0,.60f,-.88f},peak1={0,.62f,.26f},backPeak={0,.49f,.72f};
+    P leftFront[4]={fl,bottom,top,tl},rightFront[4]={bottom,fr,tr,top};
+    P leftQuarter[3]={fl,tl,sl},rightQuarter[3]={fr,sr,tr};
+    /* Clip the upper forward side corners into the swept, pentagonal outline
+     * of the references without narrowing the horizon-level side view. */
+    P lcut0=add(ul,mul(sub(sl,ul),.28f)),lcut1=add(ul,mul(sub(rl,ul),.28f));
+    P rcut0=add(ur,mul(sub(sr,ur),.28f)),rcut1=add(ur,mul(sub(rr,ur),.28f));
+    P leftSide[5]={sl,lcut0,lcut1,rl,bl},rightSide[5]={sr,br,rr,rcut1,rcut0};
+    window(leftFront,4,.05f);window(rightFront,4,.05f);
+    window(leftQuarter,3,.075f);window(rightQuarter,3,.075f);
+    window(leftSide,5,.10f);window(rightSide,5,.10f);
+    tri(ul,lcut0,lcut1,wall,0);tri(ur,rcut1,rcut0,wall,0);
+    tri(tl,ul,sl,wall,0);tri(tr,sr,ur,wall,0);
+    quad(tl,peak0,peak1,rl,wall,0);quad(peak0,tr,rr,peak1,wall,0);
+    tri(tl,tr,peak0,wall,0);
+    tri(tl,rl,ul,wall,0);tri(tr,ur,rr,wall,0);
+    quad(bl,rl,(P){-.46f,.43f,.72f},rings[2][0],wall,0);
+    quad(br,rings[2][5],(P){.46f,.43f,.72f},rr,wall,0);
+    quad(rl,peak1,backPeak,(P){-.46f,.43f,.72f},black,0);
+    quad(peak1,rr,(P){.46f,.43f,.72f},backPeak,black,0);
+    tri((P){-.46f,.43f,.72f},backPeak,(P){.46f,.43f,.72f},wall,0);
     quad(fl,fr,rings[0][5],rings[0][0],wall,0);
     quad(fl,sl,rings[1][0],rings[0][0],wall,0);
     quad(fr,rings[0][5],rings[1][5],sr,wall,0);
+    quad(sl,bl,rings[2][0],rings[1][0],wall,0);
+    quad(sr,rings[1][5],rings[2][5],br,wall,0);
     const P ends[][2]={{fl,fr},{fl,tl},{fr,tr},{tl,tr},{tl,ul},{tr,ur},{fl,sl},{fr,sr},{sl,ul},{sr,ur},
         {sl,bl},{sr,br},{ul,rl},{ur,rr},{bl,rl},{br,rr},{rl,rr},{tl,peak0},{tr,peak0},{peak0,peak1},{rl,peak1},{rr,peak1}};
-    for(unsigned i=0;i<sizeof ends/sizeof *ends;i++)beam(ends[i][0],ends[i][1],i==19?.026f:.032f,edge);
+    for(unsigned i=0;i<sizeof ends/sizeof *ends;i++)beam(ends[i][0],ends[i][1],i==19?.022f:.028f,edge);
+    beam(bottom,top,.018f,edge);
     /* Broad sill seals hide the join between glass and lower airframe. */
     beam(fl,sl,.050f,black);beam(fr,sr,.050f,black);beam(sl,bl,.055f,black);beam(sr,br,.055f,black);
     beam(bl,(P){-.70f,-.20f,.78f},.055f,black);beam(br,(P){.70f,-.20f,.78f},.055f,black);
@@ -158,11 +193,12 @@ static int ray_hit(const VrCockpitVertex *v,unsigned count,P origin,P dir,float 
 }
 int vr_cockpit_selftest(void){
     build();int fail=0;
-    const P enclosed[]={{0,-1,0},{-1,-.65f,0},{1,-.65f,0},{0,0,1},{0,.4f,1},{0,-.8f,-1},{-.5f,-1,-.5f},{.5f,-1,-.5f}};
+    const P enclosed[]={{0,-1,0},{-1,-.65f,0},{1,-.65f,0},{0,0,1},{0,.4f,1},{0,-.8f,-1},{-.5f,-1,-.5f},{.5f,-1,-.5f},
+        {0,1,0},{-.35f,.8f,-.25f},{.35f,.8f,-.25f}};
     const P eyes[]={{0,0,0},{-.10f,0,0},{.10f,0,0}};
     for(unsigned e=0;e<3;e++)for(unsigned i=0;i<sizeof enclosed/sizeof *enclosed;i++)
         if(!ray_hit(opaque,mesh.opaque_count,eyes[e],unit(enclosed[i]),2.5f)){fprintf(stderr,"Cockpit enclosure leak: eye %u ray %u\n",e,i);fail++;}
-    const P windows[]={{0,0,-1},{.12f,.15f,-1},{1,.1f,0},{-1,.1f,0}};
+    const P windows[]={{-.18f,.03f,-1},{.18f,.03f,-1},{-.55f,.10f,-1},{.55f,.10f,-1},{1,.1f,0},{-1,.1f,0}};
     for(unsigned i=0;i<sizeof windows/sizeof *windows;i++){
         P d=unit(windows[i]);
         if(ray_hit(opaque,mesh.opaque_count,(P){0,0,0},d,2.5f)||!ray_hit(glass,mesh.glass_count,(P){0,0,0},d,2.5f)){

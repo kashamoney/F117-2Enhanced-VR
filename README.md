@@ -158,7 +158,8 @@ The game's exaggerated vertical scale and high-altitude compression are preserve
 so HUD altitude is not a literal VR ruler.
 `--vr-no-cockpit` starts with the cockpit hidden. `--classic` disables VR.
 `--vr-dump` writes the first pair of eye images, the GPU cockpit mirror, and matched-projection
-GPU/software reference images and front/left/right/rear cockpit previews to the working directory.
+GPU/software reference images and front/left/right/rear, front-quarter and upward cockpit
+previews to the working directory.
 Capture waits for a settled mission; readbacks are excluded from benchmark warmup/samples.
 Session logs are in `work/vr-session/f117-vr.log`; original crash logs remain beside the exe.
 
@@ -171,6 +172,10 @@ Implementation and current limits:
 * The original cockpit pictures are reused on an aircraft-fixed instrument panel. The
   enclosed lower hull, footwell, rear bulkhead, faceted glazed canopy, sills, ejection seat/harness,
   side consoles, stick, throttle, pedals and display bezels are cached procedural geometry.
+  The canopy follows the user's aircraft references: raked split windscreen, triangular
+  quarter lights, shorter side windows with clipped upper corners, and an opaque faceted
+  roof/aft section. Openings are deliberately generous for visibility in VR. The front
+  center mullion sits beyond the HUD plane, keeping the live symbology clear.
   This is an approximation of the interior; switches remain decorative and original instruments stay live.
   The decorative bezels are recessed and the consoles start beside the pilot to keep the
   full-size live panel visible. A mesh ray test checks 1,683 panel sightlines from three seated eye positions.
@@ -232,17 +237,17 @@ It measures 30 stereo frames after warmup, including render/upload/GPU completio
 exercises the old source-image pipeline. `--headset` runs against OpenXR; the benchmark excludes frame waiting and tracking lookup.
 Use SteamVR frame timing to check delivery and missed display frames. Measurements exclude
 mission boot; sustained comfort and performance in other missions remain headset checks.
-Current local carrier measurements on the Odyssey+/Oasis: **1716x1868 per eye, 8x MSAA,
-4.88 ms average render/upload work, 90.0 submitted frames/s over 900 measured frames**
+Current local real-clock mission measurements on the Odyssey+/Oasis: **1716x1868 per eye, 8x MSAA,
+5.00 ms average render/upload work, 89.9 submitted frames/s over 900 measured frames**
 after runtime warmup. The old 4096-square software path measured 76.68 ms of work per
-stereo frame. Mean upload falls from about 128 MiB to about 5.1 MiB per frame. These are local
+stereo frame. Mean upload falls from about 128 MiB to about 6.4 MiB per frame. These are local
 measurements; startup, other workloads, and mission complexity can affect delivery.
 The GPU/software image comparison (`--validate`, requires NumPy/Pillow) checks forward,
 yaw, pitch and roll at matching projections after mission initialization has settled. Three
 additional downward views require visible carrier-deck coverage; this catches a missing
 ship even when both VR software/GPU paths share a wrong camera datum. `--vr-selftest`
-also ray-tests the actual cockpit triangles for lower/rear enclosure and clear glazed
-window sightlines. Headset comfort and sustained flight are
+also ray-tests the actual cockpit triangles for lower/rear/roof enclosure, clear glazed
+window sightlines, and unobstructed HUD/panel sightlines. Headset comfort and sustained flight are
 still user checks. To measure the actual runtime with a longer warmup:
 
 ```powershell
