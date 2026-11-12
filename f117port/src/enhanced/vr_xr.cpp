@@ -555,6 +555,31 @@ public:
             render(0,p,f,target.Get(),depth.Get(),0,0,1024,1024,true);
             char name[80];std::snprintf(name,sizeof name,"vr-cockpit-%s.png",names[k]);readWorld(inspected,name);
         }
+        // Project the actual mesh orthographically as well: perspective views
+        // from the seat conceal errors in pane topology and side proportions.
+        const auto *mesh=vr_cockpit_mesh();
+        for(int side=0;side<2;side++){
+            const float clear[4]={.30f,.34f,.38f,1};context->ClearRenderTargetView(target.Get(),clear);
+            context->ClearDepthStencilView(depth.Get(),D3D11_CLEAR_DEPTH,1,0);targetSRGB=true;
+            ID3D11RenderTargetView *rt=target.Get();context->OMSetRenderTargets(1,&rt,depth.Get());
+            context->OMSetDepthStencilState(depthState.Get(),0);context->RSSetState(raster.Get());
+            D3D11_VIEWPORT vp{0,0,1024,1024,0,1};context->RSSetViewports(1,&vp);
+            auto profile=[&](const VrCockpitVertex *v,unsigned count){
+                for(unsigned i=0;i<count;i++){
+                    const auto &p=v[i].p;
+                    const float scale=side?1.5f:.86f;
+                    V q{{side?(p[2]+.52f)/scale:p[0]/scale,(p[1]+.08f)/scale,
+                        side?(p[0]+.8f)/1.6f:(p[2]+2)/3,1},{0,0},
+                        {v[i].colour[0],v[i].colour[1],v[i].colour[2],v[i].colour[3]}};
+                    vertices.push_back(q);
+                }draw(0,f,nullptr);
+            };
+            profile(mesh->opaque,mesh->opaque_count);
+            context->OMSetBlendState(glassBlend.Get(),nullptr,~0u);context->OMSetDepthStencilState(glassDepth.Get(),0);
+            profile(mesh->glass,mesh->glass_count);
+            context->OMSetBlendState(nullptr,nullptr,~0u);context->OMSetDepthStencilState(depthState.Get(),0);
+            readWorld(inspected,side?"vr-canopy-profile-side.png":"vr-canopy-profile-front.png");
+        }
     }
     void dumpTemporalViews(int w,int h) {
         VrFov f{-pi/4,pi/4,pi/4,-pi/4};
@@ -624,7 +649,7 @@ public:
         if(!ok)throw std::runtime_error("Restore native GPU eye after validation");
         int ew=preview?(vr_options.resolution?vr_options.resolution:1920):swaps[0].w;
         int eh=preview?ew:swaps[0].h;renderWorld(0,fovs[0],ew,eh);
-        dumped=true;note("Wrote native GPU eyes, matched-projection references and seven enclosed-cockpit views");
+        dumped=true;note("Wrote native GPU eyes, matched-projection references, seven cockpit views and two canopy profiles");
     }
     void dumpMirror(int size) {
         if(!vr_options.dump || !mirror || mirrorDumped)return;

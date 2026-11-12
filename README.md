@@ -172,10 +172,10 @@ Implementation and current limits:
 * The original cockpit pictures are reused on an aircraft-fixed instrument panel. The
   enclosed lower hull, footwell, rear bulkhead, faceted glazed canopy, sills, ejection seat/harness,
   side consoles, stick, throttle, pedals and display bezels are cached procedural geometry.
-  The canopy follows the user's aircraft references: raked split windscreen, triangular
-  quarter lights, shorter side windows with clipped upper corners, and an opaque faceted
-  roof/aft section. Openings are deliberately generous for visibility in VR. The front
-  center mullion sits beyond the HUD plane, keeping the live symbology clear.
+  The canopy has five flat panes: one unbroken raked windscreen, two triangular
+  front quarter lights and two inward-leaning side windows. The side sills rise toward
+  narrow aft tips, under an opaque faceted roof. Quarter lights share their rear posts
+  directly with the side windows. Openings are deliberately generous for visibility in VR.
   This is an approximation of the interior; switches remain decorative and original instruments stay live.
   The decorative bezels are recessed and the consoles start beside the pilot to keep the
   full-size live panel visible. A mesh ray test checks 1,683 panel sightlines from three seated eye positions.
@@ -221,7 +221,10 @@ python tools/benchmark_vr.py --exe f117port/build-vr/f117-enhanced-vr.exe --game
 ```
 
 The run saves `vr-hud-reference.png`, `vr-hud-masked.png` (the exported RGBA layer),
-and the usual stereo/cockpit previews. `--headset --pacing --frames 900 --hud-check`
+the stereo/cockpit previews, and `vr-canopy-profile-front.png` / `vr-canopy-profile-side.png`.
+The profiles project the actual cockpit mesh orthographically with equal horizontal and
+vertical scale, for comparing window outlines and proportions with the references.
+`--headset --pacing --frames 900 --hud-check`
 also checks actual runtime pacing. The integration check renders the HUD again
 after intervening eye/head poses, verifies pixel equality, and audits state restoration.
 

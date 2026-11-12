@@ -76,13 +76,13 @@ static void build(void){
     built=1;
     /* Continuous lower hull: five faces around the sides/footwell, closed at
      * both ends. The open upper edge meets the canopy sill. */
-    const P section[6]={{-.70f,-.20f,0},{-.72f,-.63f,0},{-.46f,-1.02f,0},{.46f,-1.02f,0},{.72f,-.63f,0},{.70f,-.20f,0}};
-    const float stations[3]={-1.70f,-.45f,.78f},scales[3]={.78f,1,1};
+    const P section[6]={{-.70f,-.26f,0},{-.72f,-.63f,0},{-.46f,-1.02f,0},{.46f,-1.02f,0},{.72f,-.63f,0},{.70f,-.26f,0}};
+    const float stations[3]={-1.82f,-.45f,.78f},scales[3]={.78f,1,1};
     P rings[3][6];
     for(int s=0;s<3;s++)for(int i=0;i<6;i++)rings[s][i]=(P){section[i].x*scales[s],section[i].y,stations[s]};
     for(int s=0;s<2;s++)for(int i=0;i<5;i++)quad(rings[s][i],rings[s+1][i],rings[s+1][i+1],rings[s][i+1],wall,0);
     for(int s=0;s<3;s+=2)for(int i=1;i<5;i++)tri(rings[s][0],rings[s][i],rings[s][i+1],wall,0);
-    quad((P){-.70f,-.20f,.78f},(P){.70f,-.20f,.78f},(P){.46f,.43f,.72f},(P){-.46f,.43f,.72f},wall,0);
+    quad(rings[2][0],rings[2][5],(P){.46f,.43f,.72f},(P){-.46f,.43f,.72f},wall,0);
 
     /* Dashboard, coaming and a recessed frame around the original live panel. */
     box(-.64f,-.70f,-1.09f,.64f,-.195f,-.89f,wall);
@@ -93,30 +93,28 @@ static void build(void){
     beam((P){.61f,-.195f,-.866f},(P){.61f,-.65f,-.866f},.025f,edge);
     bezel(-.309f,-.492f,-.036f,-.278f);bezel(.032f,-.492f,.306f,-.278f);
 
-    /* Aircraft-inspired canopy: raked split windscreen, triangular forward
-     * quarter lights and shorter swept side windows. The roof and aft shoulders
-     * are opaque facets, rather than an all-glass bubble. The entire windscreen
-     * stays beyond the HUD plane, including its slim center mullion. */
-    P fl={-.43f,-.18f,-1.70f},fr={.43f,-.18f,-1.70f},tl={-.36f,.49f,-1.04f},tr={.36f,.49f,-1.04f};
-    P sl={-.70f,-.20f,-.78f},sr={.70f,-.20f,-.78f},ul={-.58f,.50f,-.60f},ur={.58f,.50f,-.60f};
-    P bl={-.68f,-.20f,.30f},br={.68f,-.20f,.30f},rl={-.56f,.48f,.26f},rr={.56f,.48f,.26f};
-    P bottom={0,-.18f,-1.70f},top={0,.49f,-1.04f};
-    P peak0={0,.60f,-.88f},peak1={0,.62f,.26f},backPeak={0,.49f,.72f};
-    P leftFront[4]={fl,bottom,top,tl},rightFront[4]={bottom,fr,tr,top};
+    /* Five flat panes, as in the reference: one unbroken raked windscreen,
+     * two triangular front lights and two swept side panes. Each front light
+     * shares its rear edge directly with its side pane: no invented opaque
+     * cheek or center windshield divider. Side sills rise to a narrow aft tip. */
+    P fl={-.46f,-.17f,-1.82f},fr={.46f,-.17f,-1.82f},tl={-.26f,.48f,-.72f},tr={.26f,.48f,-.72f};
+    P sl={-.70f,-.25f,-1.20f},sr={.70f,-.25f,-1.20f};
+    P bl={-.68f,-.01f,.52f},br={.68f,-.01f,.52f};
+    /* Solve the aft upper corner on the side plane, so each transparency is
+     * flat rather than a warped polygon assembled from unrelated corners. */
+    P normal=cross(sub(tl,sl),sub(bl,sl));
+    P rl={0,.31f,.08f};
+    rl.x=sl.x-(normal.y*(rl.y-sl.y)+normal.z*(rl.z-sl.z))/normal.x;
+    P rr={-rl.x,rl.y,rl.z};
+    P peak0={0,.58f,-.60f},peak1={0,.53f,.30f},backPeak={0,.47f,.72f};
+    P front[4]={fl,fr,tr,tl};
     P leftQuarter[3]={fl,tl,sl},rightQuarter[3]={fr,sr,tr};
-    /* Clip the upper forward side corners into the swept, pentagonal outline
-     * of the references without narrowing the horizon-level side view. */
-    P lcut0=add(ul,mul(sub(sl,ul),.28f)),lcut1=add(ul,mul(sub(rl,ul),.28f));
-    P rcut0=add(ur,mul(sub(sr,ur),.28f)),rcut1=add(ur,mul(sub(rr,ur),.28f));
-    P leftSide[5]={sl,lcut0,lcut1,rl,bl},rightSide[5]={sr,br,rr,rcut1,rcut0};
-    window(leftFront,4,.05f);window(rightFront,4,.05f);
+    P leftSide[4]={sl,tl,rl,bl},rightSide[4]={sr,br,rr,tr};
+    window(front,4,.055f);
     window(leftQuarter,3,.075f);window(rightQuarter,3,.075f);
-    window(leftSide,5,.10f);window(rightSide,5,.10f);
-    tri(ul,lcut0,lcut1,wall,0);tri(ur,rcut1,rcut0,wall,0);
-    tri(tl,ul,sl,wall,0);tri(tr,sr,ur,wall,0);
+    window(leftSide,4,.10f);window(rightSide,4,.10f);
     quad(tl,peak0,peak1,rl,wall,0);quad(peak0,tr,rr,peak1,wall,0);
     tri(tl,tr,peak0,wall,0);
-    tri(tl,rl,ul,wall,0);tri(tr,ur,rr,wall,0);
     quad(bl,rl,(P){-.46f,.43f,.72f},rings[2][0],wall,0);
     quad(br,rings[2][5],(P){.46f,.43f,.72f},rr,wall,0);
     quad(rl,peak1,backPeak,(P){-.46f,.43f,.72f},black,0);
@@ -127,13 +125,13 @@ static void build(void){
     quad(fr,rings[0][5],rings[1][5],sr,wall,0);
     quad(sl,bl,rings[2][0],rings[1][0],wall,0);
     quad(sr,rings[1][5],rings[2][5],br,wall,0);
-    const P ends[][2]={{fl,fr},{fl,tl},{fr,tr},{tl,tr},{tl,ul},{tr,ur},{fl,sl},{fr,sr},{sl,ul},{sr,ur},
-        {sl,bl},{sr,br},{ul,rl},{ur,rr},{bl,rl},{br,rr},{rl,rr},{tl,peak0},{tr,peak0},{peak0,peak1},{rl,peak1},{rr,peak1}};
-    for(unsigned i=0;i<sizeof ends/sizeof *ends;i++)beam(ends[i][0],ends[i][1],i==19?.022f:.028f,edge);
-    beam(bottom,top,.018f,edge);
+    const P ends[][2]={{fl,fr},{fl,tl},{fr,tr},{tl,tr},{fl,sl},{fr,sr},{sl,tl},{sr,tr},
+        {sl,bl},{sr,br},{tl,rl},{tr,rr},{bl,rl},{br,rr},{rl,rr},{tl,peak0},{tr,peak0},{rl,peak1},{rr,peak1}};
+    for(unsigned i=0;i<sizeof ends/sizeof *ends;i++)beam(ends[i][0],ends[i][1],.028f,edge);
+    beam(peak0,peak1,.022f,edge);
     /* Broad sill seals hide the join between glass and lower airframe. */
     beam(fl,sl,.050f,black);beam(fr,sr,.050f,black);beam(sl,bl,.055f,black);beam(sr,br,.055f,black);
-    beam(bl,(P){-.70f,-.20f,.78f},.055f,black);beam(br,(P){.70f,-.20f,.78f},.055f,black);
+    beam(bl,rings[2][0],.055f,black);beam(br,rings[2][5],.055f,black);
 
     for(int side=-1;side<=1;side+=2){
         float x=side<0?-.65f:.42f;
@@ -198,7 +196,9 @@ int vr_cockpit_selftest(void){
     const P eyes[]={{0,0,0},{-.10f,0,0},{.10f,0,0}};
     for(unsigned e=0;e<3;e++)for(unsigned i=0;i<sizeof enclosed/sizeof *enclosed;i++)
         if(!ray_hit(opaque,mesh.opaque_count,eyes[e],unit(enclosed[i]),2.5f)){fprintf(stderr,"Cockpit enclosure leak: eye %u ray %u\n",e,i);fail++;}
-    const P windows[]={{-.18f,.03f,-1},{.18f,.03f,-1},{-.55f,.10f,-1},{.55f,.10f,-1},{1,.1f,0},{-1,.1f,0}};
+    /* The triangular front lights are narrow: aim through their centers,
+     * rather than the swept posts shared with the side panes. */
+    const P windows[]={{0,.03f,-1},{-.18f,.03f,-1},{.18f,.03f,-1},{-.38f,.016f,-1},{.38f,.016f,-1},{1,.1f,0},{-1,.1f,0}};
     for(unsigned i=0;i<sizeof windows/sizeof *windows;i++){
         P d=unit(windows[i]);
         if(ray_hit(opaque,mesh.opaque_count,(P){0,0,0},d,2.5f)||!ray_hit(glass,mesh.glass_count,(P){0,0,0},d,2.5f)){
