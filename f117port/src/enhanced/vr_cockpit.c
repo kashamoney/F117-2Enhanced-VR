@@ -9,6 +9,7 @@ enum { CAP=24576 };
 static VrCockpitVertex opaque[CAP],glass[CAP];
 static VrCockpitMesh mesh={opaque,glass,0,0};
 static int built;
+const VrCockpitSurface vr_cockpit_panel={-.575f,-.602f,.575f,-.21f,-.86f};
 static const C wall={.024f,.030f,.036f,1},edge={.070f,.081f,.090f,1},black={.009f,.012f,.015f,1};
 static const C console={.040f,.048f,.054f,1},metal={.17f,.19f,.20f,1},olive={.10f,.12f,.08f,1};
 static const C yellow={.65f,.43f,.045f,1},green={.05f,.46f,.19f,1},red={.48f,.035f,.018f,1};
@@ -47,7 +48,8 @@ static void beam(P a,P b,float width,C c){
 }
 static void pane(P a,P b,P c,P d){quad(a,b,c,d,(C){.10f,.16f,.17f,.035f},1);}
 static void bezel(float x0,float y0,float x1,float y1){
-    const float w=.009f,z=-.850f;
+    /* Recess decorative frames behind the live art, including their buttons. */
+    const float w=.009f,z=-.880f;
     box(x0-w,y0-w,z-.025f,x1+w,y0,z,black);box(x0-w,y1,z-.025f,x1+w,y1+w,z,black);
     box(x0-w,y0,z-.025f,x0,y1,z,edge);box(x1,y0,z-.025f,x1+w,y1,z,edge);
     for(int i=0;i<5;i++){
@@ -100,9 +102,10 @@ static void build(void){
 
     for(int side=-1;side<=1;side+=2){
         float x=side<0?-.65f:.42f;
-        box(x,-.66f,-.78f,x+.23f,-.44f,.51f,console);
+        /* Consoles start beside the pilot, clear of the panel's viewing cone. */
+        box(x,-.66f,-.55f,x+.23f,-.44f,.51f,console);
         for(int bank=0;bank<4;bank++){
-            float z=-.70f+bank*.26f;
+            float z=-.50f+bank*.26f;
             box(x+.018f,-.435f,z,x+.212f,-.427f,z+.20f,black);
             for(int row=0;row<3;row++)for(int col=0;col<2;col++){
                 float px=x+.05f+col*.10f,pz=z+.035f+row*.06f;
@@ -172,6 +175,14 @@ int vr_cockpit_selftest(void){
             fprintf(stderr,"Cockpit obscures HUD: eye %u point %d,%d\n",e,x,y);fail++;
         }
     }
-    if(!fail)printf("cockpit-selftest OK: %u opaque / %u glass triangles; enclosure and window sightlines checked\n",mesh.opaque_count/3,mesh.glass_count/3);
+    unsigned blocked=0,samples=0;
+    for(unsigned e=0;e<3;e++)for(int x=0;x<=32;x++)for(int y=0;y<=16;y++){
+        const VrCockpitSurface *p=&vr_cockpit_panel;
+        P target={p->x0+(p->x1-p->x0)*x/32,p->y0+(p->y1-p->y0)*y/16,p->z};
+        P delta=sub(target,eyes[e]);samples++;
+        blocked+=ray_hit(opaque,mesh.opaque_count,eyes[e],unit(delta),sqrtf(dot(delta,delta))-.001f);
+    }
+    if(blocked){fprintf(stderr,"Cockpit obscures live instrument panel: %u / %u sightlines blocked\n",blocked,samples);fail++;}
+    if(!fail)printf("cockpit-selftest OK: %u opaque / %u glass triangles; enclosure, windows, HUD and %u panel sightlines checked\n",mesh.opaque_count/3,mesh.glass_count/3,samples);
     return fail?1:0;
 }

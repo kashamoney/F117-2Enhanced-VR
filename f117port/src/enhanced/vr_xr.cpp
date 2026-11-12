@@ -67,12 +67,12 @@ uint WP(O i):SV_TARGET {
     if(hi==252 && parity==0) discard;
     return hi<251 && parity!=0 ? hi:lo;
 }
-Texture2DMS<uint,4> idxMS:register(t0);
+Texture2DMS<uint,WORLD_SAMPLES> idxMS:register(t0);
 Texture2D<float4> palette:register(t1);
 Texture2D<uint> idx:register(t2);
 float4 LookupMS(float4 p:SV_POSITION):SV_TARGET {
-    float4 c=0;[unroll]for(int k=0;k<4;k++)c+=palette.Load(int3(idxMS.Load(int2(p.xy),k),0,0));
-    return c*0.25;
+    float4 c=0;[unroll]for(int k=0;k<WORLD_SAMPLES;k++)c+=palette.Load(int3(idxMS.Load(int2(p.xy),k),0,0));
+    return c/WORLD_SAMPLES;
 }
 float4 Lookup(float4 p:SV_POSITION):SV_TARGET {return palette.Load(int3(idx.Load(int3(p.xy,0)),0,0));}
 )HLSL";
@@ -253,7 +253,13 @@ public:
         D3D11_FEATURE_DATA_D3D11_OPTIONS options{};
         dx(device->CheckFeatureSupport(D3D11_FEATURE_D3D11_OPTIONS,&options,sizeof options),"world capabilities");
         if(!options.OutputMergerLogicOp)throw std::runtime_error("GPU lacks palette logic operations; use --vr-software");
-        UINT quality=0;device->CheckMultisampleQualityLevels(DXGI_FORMAT_R8_UINT,4,&quality);samples=quality?4:1;
+        // Diagnostic cap lets the same frozen scene reproduce lower coverage.
+        unsigned cap=SDL_getenv("F117_VR_SAMPLES")?unsigned(std::clamp(SDL_atoi(SDL_getenv("F117_VR_SAMPLES")),1,8)):8;
+        for(unsigned candidate : {8u,4u,2u}) {
+            if(candidate>cap)continue;
+            UINT quality=0;
+            if(SUCCEEDED(device->CheckMultisampleQualityLevels(DXGI_FORMAT_R8_UINT,candidate,&quality))&&quality){samples=candidate;break;}
+        }
         for(unsigned i=0;i<3;i++) {
             D3D11_BLEND_DESC1 b{};b.RenderTarget[0].LogicOpEnable=TRUE;
             b.RenderTarget[0].LogicOp=i==1?D3D11_LOGIC_OP_AND:i==2?D3D11_LOGIC_OP_OR:D3D11_LOGIC_OP_COPY;
@@ -261,12 +267,14 @@ public:
             ComPtr<ID3D11BlendState1> state;dx(d1->CreateBlendState1(&b,&state),"palette logic blend");dx(state.As(&logic[i]),"world blend state");
         }
         ComPtr<ID3DBlob> v,p,l,error;
+        const std::string sampleCount=std::to_string(std::max(2u,samples));
+        const D3D_SHADER_MACRO macros[]={{"WORLD_SAMPLES",sampleCount.c_str()},{nullptr,nullptr}};
         auto compile=[&](const char *entry,const char *profile,ComPtr<ID3DBlob> &blob){
-            error.Reset();HRESULT result=D3DCompile(worldShader,std::strlen(worldShader),"world",nullptr,nullptr,entry,profile,D3DCOMPILE_OPTIMIZATION_LEVEL3,0,&blob,&error);
+            error.Reset();HRESULT result=D3DCompile(worldShader,std::strlen(worldShader),"world",macros,nullptr,entry,profile,D3DCOMPILE_OPTIMIZATION_LEVEL3,0,&blob,&error);
             if(FAILED(result)&&error)note(static_cast<const char*>(error->GetBufferPointer()));
             dx(result,entry);
         };
-        compile("WV","vs_5_0",v);compile("WP","ps_5_0",p);compile(samples==4?"LookupMS":"Lookup","ps_5_0",l);
+        compile("WV","vs_5_0",v);compile("WP","ps_5_0",p);compile(samples>1?"LookupMS":"Lookup","ps_5_0",l);
         dx(device->CreateVertexShader(v->GetBufferPointer(),v->GetBufferSize(),nullptr,&worldVS),"world VS");
         dx(device->CreatePixelShader(p->GetBufferPointer(),p->GetBufferSize(),nullptr,&worldPS),"world PS");
         dx(device->CreatePixelShader(l->GetBufferPointer(),l->GetBufferSize(),nullptr,&lookupPS),"palette PS");
@@ -275,7 +283,7 @@ public:
             {"COLOR",0,DXGI_FORMAT_R32_UINT,0,8,D3D11_INPUT_PER_VERTEX_DATA,0}};
         dx(device->CreateInputLayout(in,2,v->GetBufferPointer(),v->GetBufferSize(),&worldLayout),"world input");
     }
-    void renderWorld(int index,const VrFov &f,int w,int h) {
+    void renderWorld(int index,const VrFov &f,int w,int h,bool backgroundOnly=false) {
         auto &t=worldTarget[index];auto &image=world[index];auto &g=geometry[index];
         if(t.w!=w||t.h!=h) {
             t=WorldTarget{};image=Image{};
@@ -310,14 +318,15 @@ public:
         UINT stride=sizeof(VrGpuVertex),offset=0;ID3D11Buffer *buffer=worldVB.Get();context->IASetVertexBuffers(0,1,&buffer,&stride,&offset);
         context->IASetInputLayout(worldLayout.Get());context->IASetPrimitiveTopology(D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
         context->VSSetShader(worldVS.Get(),nullptr,0);context->PSSetShader(worldPS.Get(),nullptr,0);
-        for(size_t i=0;i<g.batch_count;i++){auto &b=g.batches[i];context->OMSetBlendState(logic[b.op].Get(),nullptr,~0u);context->Draw(b.count,b.first);}
+        if(backgroundOnly){context->OMSetBlendState(logic[0].Get(),nullptr,~0u);context->Draw(UINT(g.background_count),0);}
+        else for(size_t i=0;i<g.batch_count;i++){auto &b=g.batches[i];context->OMSetBlendState(logic[b.op].Get(),nullptr,~0u);context->Draw(b.count,b.first);}
         context->OMSetBlendState(nullptr,nullptr,~0u);
         for(auto &colour:g.palette)colour|=0xFF000000;
         upload(gpuPalette,g.palette,256,1);
         rt=t.colourRT.Get();context->OMSetRenderTargets(1,&rt,nullptr);
         // The existing full-screen layout/VS only provides clip positions here.
         fullscreen();draw(0,f,nullptr);
-        ID3D11ShaderResourceView *views[3]={samples==4?t.srv.Get():nullptr,gpuPalette.srv.Get(),samples==1?t.srv.Get():nullptr};
+        ID3D11ShaderResourceView *views[3]={samples>1?t.srv.Get():nullptr,gpuPalette.srv.Get(),samples==1?t.srv.Get():nullptr};
         context->PSSetShaderResources(0,3,views);context->PSSetShader(lookupPS.Get(),nullptr,0);context->Draw(6,0);
         ID3D11ShaderResourceView *none[3]={nullptr,nullptr,nullptr};context->PSSetShaderResources(0,3,none);
         rt=nullptr;context->OMSetRenderTargets(1,&rt,nullptr);
@@ -456,7 +465,8 @@ public:
         if(!vr_options.cockpit)return;
         const auto *cockpit=vr_cockpit_mesh();
         cockpitMesh(eye,f,cockpit->opaque,cockpit->opaque_count);
-        quad(eye,f,{{{-0.575,-0.21,-0.86},{0.575,-0.21,-0.86},{0.575,-0.602,-0.86},{-0.575,-0.602,-0.86}}},white,0,91.0f/200,1,1);
+        const auto &p=vr_cockpit_panel;
+        quad(eye,f,{{{p.x0,p.y1,p.z},{p.x1,p.y1,p.z},{p.x1,p.y0,p.z},{p.x0,p.y0,p.z}}},white,0,91.0f/200,1,1);
         draw(1,f,&panel);
         context->OMSetBlendState(glassBlend.Get(),nullptr,~0u);context->OMSetDepthStencilState(glassDepth.Get(),0);
         cockpitMesh(eye,f,cockpit->glass,cockpit->glass_count);
@@ -530,6 +540,31 @@ public:
             char name[80];std::snprintf(name,sizeof name,"vr-cockpit-%s.png",names[k]);readWorld(inspected,name);
         }
     }
+    void dumpTemporalViews(int w,int h) {
+        VrFov f{-pi/4,pi/4,pi/4,-pi/4};
+        int size=SDL_getenv("F117_VR_CAPTURE_SIZE")?std::clamp(SDL_atoi(SDL_getenv("F117_VR_CAPTURE_SIZE")),256,2048):512;
+        int steps=SDL_getenv("F117_VR_CAPTURE_STEPS")?std::clamp(SDL_atoi(SDL_getenv("F117_VR_CAPTURE_STEPS")),16,360):40;
+        if(FILE *file=std::fopen("vr-sweep.json","w")){
+            std::fprintf(file,"{\"size\":%d,\"steps\":%d,\"radians\":%.15f,\"fps\":90,\"samples\":%u}\n",size,steps,pi/2,samples);std::fclose(file);
+        }
+        for(int k=0;k<=steps+1;k++) {
+            double roll=k==steps+1?0:k*pi/(2*steps);
+            VrPose p{{0,0,std::sin(roll/2),std::cos(roll/2)},{0,0,0}};
+            auto &g=geometry[0];vr_gpu_begin(&g);bool ok=enh_vr_render(&p,nullptr,w,h);vr_gpu_end();
+            if(!ok||g.invalid||!g.background_count)throw std::runtime_error("Temporal scene capture failed");
+            if(k==1||k==steps/9||k==steps/3||k==steps/2||k==2*steps/3||k==steps-1||k==steps){
+                renderWorld(0,f,std::min(size*4,4096),std::min(size*4,4096));
+                char ref[80];std::snprintf(ref,sizeof ref,"roll-reference-%03d.png",k);readWorld(world[0],ref);
+            }
+            renderWorld(0,f,size,size);
+            char name[80];std::snprintf(name,sizeof name,k==steps+1?"roll-repeat.png":"roll-%03d.png",k);readWorld(world[0],name);
+            if(k==steps+1)break;
+            std::array<uint32_t,256> palette;std::copy(g.palette,g.palette+256,palette.begin());
+            for(int c=0;c<256;c++)g.palette[c]=(c>=0x80&&c<=0x8f)?0x00f00000:0x000000f0;
+            renderWorld(0,f,size,size,true);std::snprintf(name,sizeof name,"sky-%03d.png",k);readWorld(world[0],name);
+            std::copy(palette.begin(),palette.end(),g.palette);
+        }
+    }
     void dumpGpuEyes(const std::array<VrPose,2> &poses,const std::array<VrFov,2> &fovs,int w,int h) {
         if(!vr_options.dump||dumped||!vr_scene_initialized())return;
         VrSceneInfo info;vr_scene_info(&info);
@@ -537,6 +572,14 @@ public:
             std::fprintf(file,"{\"site\":%d,\"carrier\":%d,\"deck\":%d,\"aircraft\":%d,\"camera\":%d}\n",info.site,info.carrier,info.deck,info.aircraft,info.camera);std::fclose(file);
         }
         readWorld(world[0],"vr-left.png");readWorld(world[1],"vr-right.png");
+        if(SDL_getenv("F117_VR_TEMPORAL")) {
+            dumpTemporalViews(w,h);
+            vr_gpu_begin(&geometry[0]);bool ok=enh_vr_render(&poses[0],nullptr,w,h);vr_gpu_end();
+            if(!ok)throw std::runtime_error("Restore temporal scene");
+            int ew=preview?(vr_options.resolution?vr_options.resolution:1920):swaps[0].w;
+            renderWorld(0,fovs[0],ew,preview?ew:swaps[0].h);
+            dumped=true;note("Wrote frozen-scene temporal roll sweep");return;
+        }
         // Differential check at precisely the software reference's projection.
         const int n=4;double cx=(w-320*n)/2.0+159*n,cy=h/2.0;
         VrFov ref{std::atan(-cx/(256*n)),std::atan((w-cx)/(256*n)),std::atan(cy/(192*n)),std::atan((cy-h)/(192*n))};

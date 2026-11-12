@@ -14,7 +14,7 @@ static P3 points[256];
 static unsigned links[256][2], face[64], nf;
 static VrGpuFrame *current;
 bool vr_gpu_active(void) { return current != NULL; }
-void vr_gpu_begin(VrGpuFrame *f) { current=f;f->count=f->batch_count=0;f->polygons=f->invalid=0;f->fine=enh.dither_fine;nf=0; }
+void vr_gpu_begin(VrGpuFrame *f) { current=f;f->count=f->batch_count=f->background_count=0;f->polygons=f->invalid=0;f->fine=enh.dither_fine;nf=0; }
 void vr_gpu_end(void) { current=NULL;nf=0; }
 void vr_gpu_palette(const uint32_t *p) { memcpy(current->palette,p,sizeof current->palette); }
 void vr_gpu_free(VrGpuFrame *f) { free(f->vertices);free(f->batches);memset(f,0,sizeof *f); }
@@ -106,6 +106,7 @@ void vr_gpu_poly2d(int n,const int64_t *p,uint8_t colour) {
     if(n>64)return;
     P2 q[64];for(int i=0;i<n;i++)q[i]=screen(p[2*i]+enh_hr.ox,p[2*i+1]+enh_hr.oy);
     polygon(q,n,(uint16_t)(0xFF00|colour));
+    current->background_count=current->count;
 }
 void vr_gpu_rect(double x0,double y0,double x1,double y1,uint8_t colour) {
     P2 q[4]={screen(x0,y0),screen(x1,y0),screen(x1,y1),screen(x0,y1)};
@@ -143,4 +144,5 @@ void vr_gpu_horizon(double x0,double y0,double x1,double y1,uint8_t sky,bool inv
     }
     P2 q[8];for(int i=0;i<n;i++)q[i]=screen(p[i].x,p[i].y);
     polygon(q,n,0xFF00|sky);
+    current->background_count=current->count;
 }

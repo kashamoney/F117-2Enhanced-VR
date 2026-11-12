@@ -130,8 +130,8 @@ Advanced launch options:
 .\tools\Start-VR.ps1 -GameDirectory 'D:\Games\F117'
 ```
 
-World polygons now rasterise on the GPU directly at the OpenXR eye target, with 4x
-MSAA where supported. The default `-Resolution 0` uses the runtime recommendation
+World polygons now rasterise on the GPU directly at the OpenXR eye target, with 8x
+MSAA (falling back to 4x, 2x or 1x as supported). The default `-Resolution 0` uses the runtime recommendation
 (on this Odyssey+/Oasis setup: **1716x1868 per eye**). A nonzero `-Resolution`, or
 `--vr-resolution 640..4096`, sets the actual eye **height** and preserves the runtime's
 width/height ratio. For example, `-Resolution 2160` increases GPU sampling without
@@ -170,6 +170,8 @@ Implementation and current limits:
   enclosed lower hull, footwell, rear bulkhead, faceted glazed canopy, sills, ejection seat/harness,
   side consoles, stick, throttle, pedals and display bezels are cached procedural geometry.
   This is an approximation of the interior; switches remain decorative and original instruments stay live.
+  The decorative bezels are recessed and the consoles start beside the pilot to keep the
+  full-size live panel visible. A mesh ray test checks 1,683 panel sightlines from three seated eye positions.
 * VR uses the original pilot-eye datum (`aircraft altitude + 0x18`) plus tracked physical
   head displacement. Using an unrelated two-metre offset put the camera below the carrier
   deck model and made the ship disappear. `Carrier-VR.cmd` already selects a carrier; its
@@ -212,10 +214,10 @@ It measures 30 stereo frames after warmup, including render/upload/GPU completio
 exercises the old source-image pipeline. `--headset` runs against OpenXR; the benchmark excludes frame waiting and tracking lookup.
 Use SteamVR frame timing to check delivery and missed display frames. Measurements exclude
 mission boot; sustained comfort and performance in other missions remain headset checks.
-Current local carrier measurements on the Odyssey+/Oasis: **1716x1868 per eye, 4x MSAA,
-4.23 ms average render/upload work, 87.6 submitted frames/s over 900 measured frames**
+Current local carrier measurements on the Odyssey+/Oasis: **1716x1868 per eye, 8x MSAA,
+4.88 ms average render/upload work, 90.0 submitted frames/s over 900 measured frames**
 after runtime warmup. The old 4096-square software path measured 76.68 ms of work per
-stereo frame. Mean upload falls from about 128 MiB to 3.9 MiB per frame. These are local
+stereo frame. Mean upload falls from about 128 MiB to about 5.1 MiB per frame. These are local
 measurements; startup, other workloads, and mission complexity can affect delivery.
 The GPU/software image comparison (`--validate`, requires NumPy/Pillow) checks forward,
 yaw, pitch and roll at matching projections after mission initialization has settled. Three
@@ -228,6 +230,28 @@ still user checks. To measure the actual runtime with a longer warmup:
 ```powershell
 python tools/benchmark_vr.py --exe f117port/build-vr/f117-enhanced-vr.exe --game-dir ../F117-Enhanced-play/Game --headset --frames 900
 ```
+
+To capture moving edges, use a deterministic airborne scene with a frozen simulation
+and a 90-degree camera roll. The capture uses the real GPU renderer, with lossless
+world PNGs and diagnostic sky masks under `work/vr-benchmark/<run>/`:
+
+```powershell
+python tools/benchmark_vr.py --exe f117port/build-vr/f117-enhanced-vr.exe --game-dir ../F117-Enhanced-play/Game --temporal --capture-size 1024 --capture-steps 90
+```
+
+The check detects discontinuous horizon coverage, stale frames at a repeated pose,
+and excessive edge-coverage error against a denser render at each sampled pose.
+`--samples 4` reproduces the previous antialiasing level for comparison. This is a
+renderer regression scene, not a measurement of headset delivery, reprojection or optics.
+NumPy/Pillow are required. To encode the 91 world frames as a 90 fps clip (requires FFmpeg):
+
+```powershell
+ffmpeg -framerate 90 -i work/vr-benchmark/<run>/roll-%03d.png -frames:v 91 -c:v libx264 -crf 12 -pix_fmt yuv420p roll-90fps.mp4
+```
+
+For six-times slow motion, use `-framerate 15`, add `-vf fps=30`, and set `-frames:v 182`. The PNGs retain
+edge detail that video compression may obscure. Headset inspection is still required
+to judge the remaining shimmer during flight.
 
 VR-enabled builds now produce `f117port/build-vr/f117-enhanced-vr.exe`. The launch scripts
 select this executable; an already running older build picks up the changes on relaunch.

@@ -31,16 +31,24 @@ def main():
     p.add_argument('--game-dir', type=Path, required=True)
     p.add_argument('--resolution', type=int, default=0)
     p.add_argument('--software', action='store_true')
+    p.add_argument('--samples', type=int, choices=(1,2,4,8), help='limit GPU MSAA for before/after comparisons (default 8)')
     p.add_argument('--headset', action='store_true')
     p.add_argument('--validate', action='store_true', help='also compare GPU/software image interiors (requires numpy and Pillow)')
+    p.add_argument('--temporal', action='store_true', help='capture and check a frozen airborne roll sweep')
+    p.add_argument('--capture-size', type=int, default=512)
+    p.add_argument('--capture-steps', type=int, default=40)
     p.add_argument('--hz', type=float, default=90)
     p.add_argument('--frames', type=int, default=30)
     p.add_argument('--warmup', type=int, help='default 5 preview frames or 120 headset frames, allowing runtime pacing to settle')
     a = p.parse_args()
     if not 1 <= a.frames <= 900 or a.hz <= 0 or (a.warmup is not None and not 0 <= a.warmup <= 900):
         p.error('Use 1..900 frames, a positive refresh rate, and 0..900 warmup frames')
-    if a.validate and a.software:
-        p.error('--validate requires the GPU renderer')
+    if (a.validate or a.temporal or a.samples is not None) and a.software:
+        p.error('--validate, --temporal and --samples require the GPU renderer')
+    if a.validate and a.temporal:
+        p.error('Run carrier validation and the airborne temporal capture separately')
+    if a.capture_size not in (256,512,1024) or not 16 <= a.capture_steps <= 360:
+        p.error('Capture size must be 256, 512 or 1024; use 16..360 capture steps')
     directory = ROOT / 'work/vr-benchmark' / uuid.uuid4().hex[:10]
     game = directory / 'game'
     game.mkdir(parents=True)
@@ -55,13 +63,18 @@ def main():
                F117_VGAME_FRAMES='400', F117_VR_BENCHMARK='1', F117_VR_PREVIEW_HIDDEN='1',
                F117_VR_BENCH_FRAMES=str(a.frames),
                F117_VR_BENCH_WARMUP=str(a.warmup if a.warmup is not None else 120 if a.headset else 5))
-    if a.validate:
+    if a.validate or a.temporal:
         env['F117_VR_VALIDATE'] = '1'
+    if a.samples is not None:
+        env['F117_VR_SAMPLES'] = str(a.samples)
+    if a.temporal:
+        env.update(F117_VR_TEMPORAL='1',F117_TEST_POSE='6,0,1500,0',
+                   F117_VR_CAPTURE_SIZE=str(a.capture_size),F117_VR_CAPTURE_STEPS=str(a.capture_steps))
     cmd = [str(a.exe.resolve()), '--vr' if a.headset else '--vr-preview', '--vr-resolution', str(a.resolution),
            '--game-dir', str(game), '--fps', 'off', '--dither', 'fine']
     if a.software:
         cmd += ['--vr-software']
-    if a.validate:
+    if a.validate or a.temporal:
         cmd += ['--vr-dump']
     result = subprocess.run(cmd, cwd=directory, env=env, capture_output=True, text=True, timeout=120)
     (directory / 'stdout.txt').write_text(result.stdout, encoding='utf-8')
@@ -72,6 +85,9 @@ def main():
     match = re.search(r'VR benchmark: \d+ stereo frames, ([\d.]+) ms/frame', log)
     if result.returncode or not match:
         raise RuntimeError(f'Benchmark failed ({result.returncode}): {result.stderr[-2000:]}')
+    if a.temporal:
+        from check_vr_temporal import check
+        check(directory)
     if a.validate:
         import numpy as np
         from PIL import Image

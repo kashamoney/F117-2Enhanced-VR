@@ -15,6 +15,7 @@ typedef struct {
     size_t count, capacity, batch_count, batch_capacity;
     uint32_t palette[256];
     unsigned polygons, invalid;
+    size_t background_count; /* end of sky/ground-band vertices, for capture diagnostics */
     bool fine;
 } VrGpuFrame;
 bool vr_gpu_active(void);

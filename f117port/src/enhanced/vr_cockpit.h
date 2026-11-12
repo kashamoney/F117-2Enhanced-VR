@@ -5,6 +5,8 @@
 extern "C" {
 #endif
 typedef struct { float p[3], colour[4]; } VrCockpitVertex;
+typedef struct { float x0,y0,x1,y1,z; } VrCockpitSurface;
+extern const VrCockpitSurface vr_cockpit_panel;
 typedef struct {
     const VrCockpitVertex *opaque, *glass;
     unsigned opaque_count, glass_count;
