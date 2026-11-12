@@ -4,6 +4,7 @@ Uses a disposable game copy and deterministic carrier mission; never changes the
 player's pilot. Excludes headset pacing, includes both eyes and the cockpit.
 """
 import argparse
+import json
 import os
 from pathlib import Path
 import re
@@ -11,6 +12,17 @@ import shutil
 import subprocess
 import uuid
 from test_vr import ROOT, roster
+
+
+def check_carrier_deck(actual, pose):
+    # The software near clipper leaves gaps in very close deck polygons. Check
+    # actual GPU deck coverage rather than treating those gaps as an oracle.
+    deck=(actual.max(axis=2)-actual.min(axis=2)<=5)&(actual.max(axis=2)>45)&(actual.max(axis=2)<200)
+    coverage=float(deck.mean())
+    print(f'Carrier deck coverage ({pose}): {coverage:.1%}')
+    if coverage<.8:
+        raise RuntimeError(f'Carrier deck missing in {pose} view')
+    return coverage
 
 
 def main():
@@ -63,7 +75,10 @@ def main():
     if a.validate:
         import numpy as np
         from PIL import Image
-        for k, pose in enumerate(('forward', 'yaw', 'pitch', 'roll')):
+        scene=json.loads((directory/'vr-scene.json').read_text())
+        if not (scene['carrier'] and scene['deck']==128 and scene['aircraft']>=scene['deck']):
+            raise RuntimeError(f'Validation fixture is not a settled carrier start: {scene}')
+        for k, pose in enumerate(('forward', 'yaw', 'pitch', 'roll', 'deck', 'port-deck', 'starboard-deck')):
             reference = np.array(Image.open(directory / f'vr-software-reference-{k}.png').convert('RGB')).astype(int)
             actual = np.array(Image.open(directory / f'vr-gpu-reference-{k}.png').convert('RGB')).astype(int)
             interior = np.ones(reference.shape[:2], dtype=bool)
@@ -73,7 +88,9 @@ def main():
             difference = np.max(abs(reference - actual), axis=2)
             agreement = np.mean(difference[interior] <= 3)
             print(f'Matched-projection {pose} interiors: {agreement:.3%} agree within 3/255 RGB')
-            if agreement < .98:
+            if k>=4:
+                check_carrier_deck(actual,pose)
+            elif agreement < .98:
                 raise RuntimeError('GPU image differs materially from the original software scene')
     ms = float(match[1])
     if ms > 1000 / a.hz:

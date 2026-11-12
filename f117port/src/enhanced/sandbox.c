@@ -614,7 +614,7 @@ bool enh_vr_render(const VrPose *eye, u32 *out, int w, int h)
     vr_eye_begin(eye, heading, pitch, roll);
     DSW(0xC07A) = 0x44; DSW(0x365E) = 0; DSB(0x294B) = 0;
     DSW(0xE44C) = (u16)ch; DSW(0xC07C) = (u16)cp; DSW(0xB770) = (u16)cr;
-    DSL(0xB288) = DSL(0xBA10); DSL(0xB752) = DSL(0xC02A); DSW(0xB75C) = DSW(0x2DF4);
+    DSL(0xB288) = DSL(0xBA10); DSL(0xB752) = DSL(0xC02A); DSW(0xB75C) = (u16)(DSW(0x2DF4)+VR_PILOT_EYE_UNITS);
     sim_matrix_from_angles(0xB156, ch, cp, cr);
     enh_set_view(0x44);
     enh_cv.fx = (w - 320 * enh_cv.n) / 2;
@@ -622,7 +622,7 @@ bool enh_vr_render(const VrPose *eye, u32 *out, int w, int h)
     enh_cv.vx = enh_cv.vy = 0; enh_cv.vw = w; enh_cv.vh = h;
     enh_wide_pass = true;
     if (vr_gpu_active()) enh_stamp_hold++;                  /* GPU sprites/bands do not need software fallback blocks */
-    r3d_scene_draw(-ch, cp, cr, DSSL(0xBA10), DSSL(0xC02A), DSS(0x2DF4), 0, 0, 320, 200);
+    r3d_scene_draw(-ch, cp, cr, DSSL(0xBA10), DSSL(0xC02A), DSS(0xB75C), 0, 0, 320, 200);
     if (vr_gpu_active()) enh_stamp_hold--;
     u8 dac[768]; u32 pal[256];
     dac_get(0, 256, dac);

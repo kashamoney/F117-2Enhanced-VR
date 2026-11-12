@@ -3,6 +3,7 @@
 #include "enhanced/enhanced.h"
 #include "enhanced/enh_canvas.h"
 #include "enhanced/vr_gpu.h"
+#include "enhanced/vr_cockpit.h"
 #include "mem.h"
 #include <math.h>
 #include <stdio.h>
@@ -103,12 +104,18 @@ void vr_eye_begin(const VrPose *eye, int heading, int pitch, int roll)
     vr_aircraft_matrix((int16_t)heading*rad,(int16_t)pitch*rad,(int16_t)roll*rad,base);
     for(int r=0;r<3;r++) {
         eye_delta[r]=0;
-        for(int c=0;c<3;c++) eye_delta[r]+=base[3*r+c]*(eye->position[c]+(c==1?2.0:0.0))/(VR_METRES_PER_UNIT*vr_options.world_scale);
+        for(int c=0;c<3;c++) eye_delta[r]+=base[3*r+c]*eye->position[c]/(VR_METRES_PER_UNIT*vr_options.world_scale);
     }
-    /* A simple seated eye position, two metres above the aircraft reference point. */
+    /* The engine supplies its original pilot-eye datum; tracking adds only the
+     * physical displacement from the recentered seated pose. */
     object_units=1;
     for(int i=0;i<50;i++) queued_units[i]=1;
     eye_active=true;
+}
+bool vr_scene_initialized(void) { return DSW(0xC0AE)==2 && DSW(0x98E2)>=2; }
+void vr_scene_info(VrSceneInfo *info) {
+    int site=DSW(0xE2DC),alt=DSS(0x2DF4);
+    *info=(VrSceneInfo){site,(DSB((u16)(0xB2AB+16*site))&2)!=0,DSW(0xC0A2),alt,alt+VR_PILOT_EYE_UNITS};
 }
 void vr_eye_end(void) { eye_active=false; }
 void vr_object_units(double scale) { if(eye_active) object_units=scale; }
@@ -142,7 +149,7 @@ void vr_capture_desktop(const uint32_t *src,int w,int h,uint32_t *out,int scale)
 }
 int vr_selftest(void)
 {
-    int fail=0;
+    int fail=vr_cockpit_selftest();
 #define CHECK(c,msg) do { if(!(c)) {fprintf(stderr,"VR FAIL: %s\n",msg);fail++;} } while(0)
     VrPose eye={{0,0,0,1},{0,0,0}};
     int h,p,r;
@@ -163,6 +170,7 @@ int vr_selftest(void)
     vr_eye_begin(&eye,0,0,0);
     CHECK(fabs(eye_delta[0]+0.032/(VR_METRES_PER_UNIT*vr_options.world_scale))<1e-8,"left eye has physical IPD offset");
     CHECK(fabs(eye_delta[0])<1 && eye_delta[0]!=0,"sub-foot eye displacement is retained");
+    CHECK(fabs(eye_delta[1])<1e-12,"tracking preserves the engine pilot-eye datum without another height offset");
     vr_eye_end();
     /* High-resolution capture must retain every source pixel rather than reduce to 320x200. */
     for(int scale=1;scale<=4;scale*=2) {
@@ -209,7 +217,7 @@ static void gpu_scene_check(void)
 void vr_scene_check(void)
 {
     static bool done;
-    if (!vr_options.scene_test[0] || !enh_vr_ready()) return;
+    if (!vr_options.scene_test[0] || !enh_vr_ready() || !vr_scene_initialized()) return;
     if(vr_options.gpu_check)gpu_scene_check();
     if(done)return;
     done=true;

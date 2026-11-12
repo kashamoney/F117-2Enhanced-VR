@@ -16,6 +16,7 @@
 #include <SDL3/SDL.h>
 #include "enhanced/vr.h"
 #include "enhanced/vr_gpu.h"
+#include "enhanced/vr_cockpit.h"
 #include <algorithm>
 #include <array>
 #include <cmath>
@@ -121,6 +122,10 @@ public:
     ComPtr<ID3D11SamplerState> sampler;
     ComPtr<ID3D11RasterizerState> raster;
     ComPtr<ID3D11DepthStencilState> depthState;
+    ComPtr<ID3D11DepthStencilState> glassDepth;
+    ComPtr<ID3D11BlendState> glassBlend;
+    size_t vertexCapacity=4096;
+    double eyeRotation[9]={1,0,0,0,1,0,0,0,1};
     Image world[2],panel;
     Image gpuPalette;
     WorldTarget worldTarget[2];
@@ -234,6 +239,13 @@ public:
         dx(device->CreateRasterizerState(&rd,&raster),"rasterizer");
         D3D11_DEPTH_STENCIL_DESC dd{};dd.DepthEnable=TRUE;dd.DepthWriteMask=D3D11_DEPTH_WRITE_MASK_ALL;dd.DepthFunc=D3D11_COMPARISON_LESS_EQUAL;
         dx(device->CreateDepthStencilState(&dd,&depthState),"depth state");
+        dd.DepthWriteMask=D3D11_DEPTH_WRITE_MASK_ZERO;
+        dx(device->CreateDepthStencilState(&dd,&glassDepth),"canopy glass depth");
+        D3D11_BLEND_DESC blend{};auto &b=blend.RenderTarget[0];b.BlendEnable=TRUE;
+        b.SrcBlend=D3D11_BLEND_SRC_ALPHA;b.DestBlend=D3D11_BLEND_INV_SRC_ALPHA;b.BlendOp=D3D11_BLEND_OP_ADD;
+        b.SrcBlendAlpha=D3D11_BLEND_ONE;b.DestBlendAlpha=D3D11_BLEND_INV_SRC_ALPHA;b.BlendOpAlpha=D3D11_BLEND_OP_ADD;
+        b.RenderTargetWriteMask=D3D11_COLOR_WRITE_ENABLE_ALL;
+        dx(device->CreateBlendState(&blend,&glassBlend),"canopy glass blend");
         if(gpuWorld)createWorldPipeline();
     }
     void createWorldPipeline() {
@@ -374,9 +386,16 @@ public:
     }
     void draw(int mode,const VrFov &fov,Image *image,int n=1) {
         if(vertices.empty())return;
-        if(vertices.size()>4096)throw std::runtime_error("VR geometry buffer overflow");
+        if(vertices.size()>vertexCapacity) {
+            if(vertices.size()>65536)throw std::runtime_error("VR cockpit geometry buffer overflow");
+            vertexCapacity=vertices.size()*2;vb.Reset();
+            D3D11_BUFFER_DESC d{};d.ByteWidth=UINT(vertexCapacity*sizeof(V));d.Usage=D3D11_USAGE_DYNAMIC;
+            d.BindFlags=D3D11_BIND_VERTEX_BUFFER;d.CPUAccessFlags=D3D11_CPU_ACCESS_WRITE;
+            dx(device->CreateBuffer(&d,nullptr,&vb),"cockpit vertex buffer");
+        }
         D3D11_MAPPED_SUBRESOURCE map{};
         dx(context->Map(vb.Get(),0,D3D11_MAP_WRITE_DISCARD,0,&map),"map vertices");std::memcpy(map.pData,vertices.data(),vertices.size()*sizeof(V));context->Unmap(vb.Get(),0);
+        uploadBytes+=vertices.size()*sizeof(V);
         Constants c{};c.mode[0]=float(mode);c.mode[1]=targetSRGB?1.0f:0.0f;
         if(image) {c.source[0]=(image->w-320*n)/2.0f/image->w+159.0f*n/image->w;c.source[1]=0.5f;c.source[2]=256.0f*n/image->w;c.source[3]=192.0f*n/image->h;}
         c.fov[0]=float(std::tan(fov.left));c.fov[1]=float(std::tan(fov.right));c.fov[2]=float(std::tan(fov.up));c.fov[3]=float(std::tan(fov.down));
@@ -391,9 +410,8 @@ public:
         view=nullptr;context->PSSetShaderResources(0,1,&view);vertices.clear();
     }
     V vertex(const VrPose &eye,const VrFov &f,double x,double y,double z,float u,float v,const std::array<float,4>&color) {
-        double m[9];vr_matrix(eye.orientation,m);
         double delta[3]={x-eye.position[0],y-eye.position[1],z-eye.position[2]},p[3]={};
-        for(int r=0;r<3;r++)for(int k=0;k<3;k++)p[r]+=m[3*k+r]*delta[k];
+        for(int r=0;r<3;r++)for(int k=0;k<3;k++)p[r]+=eyeRotation[3*k+r]*delta[k];
         double l=std::tan(f.left),r=std::tan(f.right),up=std::tan(f.up),down=std::tan(f.down),nearZ=0.03,farZ=1000;
         return V{{float(2*p[0]/(r-l)+(r+l)*p[2]/(r-l)),float(2*p[1]/(up-down)+(up+down)*p[2]/(up-down)),
             float(-farZ*p[2]/(farZ-nearZ)-farZ*nearZ/(farZ-nearZ)),float(-p[2])},{u,v},{color[0],color[1],color[2],color[3]}};
@@ -416,28 +434,33 @@ public:
         V q[]={{{-1,1,0.99999f,1},{0,0},{1,1,1,1}},{{1,1,0.99999f,1},{1,0},{1,1,1,1}},{{1,-1,0.99999f,1},{1,1},{1,1,1,1}},{{-1,-1,0.99999f,1},{0,1},{1,1,1,1}}};
         for(int i:{0,1,2,0,2,3})vertices.push_back(q[i]);
     }
+    void cockpitMesh(const VrPose &eye,const VrFov &f,const VrCockpitVertex *data,unsigned count) {
+        vertices.reserve(count);
+        for(unsigned i=0;i<count;i++) {
+            const auto &v=data[i];
+            vertices.push_back(vertex(eye,f,v.p[0],v.p[1],v.p[2],0,0,{v.colour[0],v.colour[1],v.colour[2],v.colour[3]}));
+        }
+        draw(0,f,nullptr);
+    }
     void render(int index,const VrPose &eye,const VrFov &f,ID3D11RenderTargetView *target,ID3D11DepthStencilView *depth,
                 float x,float y,float w,float h,bool flight) {
+        vr_matrix(eye.orientation,eyeRotation);
         context->OMSetRenderTargets(1,&target,depth);context->OMSetDepthStencilState(depthState.Get(),0);context->RSSetState(raster.Get());
         D3D11_VIEWPORT vp{x,y,w,h,0,1};context->RSSetViewports(1,&vp);
         if(flight) {fullscreen();draw(gpuWorld?1:3,f,&world[index],std::max(1,vr_canvas_resolution()/1024));}
-        const std::array<float,4> white={1,1,1,1},dark={0.025f,0.03f,0.035f,1},rim={0.07f,0.08f,0.09f,1};
+        const std::array<float,4> white={1,1,1,1};
         if(!flight) {
             quad(eye,f,{{{-1.05,0.65,-1.7},{1.05,0.65,-1.7},{1.05,-0.66,-1.7},{-1.05,-0.66,-1.7}}},white);
             draw(1,f,&panel);return;
         }
         if(!vr_options.cockpit)return;
-        box(eye,f,-0.63,-0.75,-1.05,0.63,-0.20,-0.87,dark); // dashboard
-        box(eye,f,-0.70,-0.83,-0.88,-0.43,-0.46,0.65,dark); // left console
-        box(eye,f,0.43,-0.83,-0.88,0.70,-0.46,0.65,dark);
-        box(eye,f,-0.70,-1.05,-1.0,0.70,-0.95,0.75,dark); // floor
-        box(eye,f,-0.72,-0.50,-0.9,-0.67,0.58,-0.65,rim); // canopy supports
-        box(eye,f,0.67,-0.50,-0.9,0.72,0.58,-0.65,rim);
-        box(eye,f,-0.72,0.55,-0.9,0.72,0.60,-0.65,rim);
-        box(eye,f,-0.42,-0.75,0.35,0.42,0.10,0.53,dark); // seat back
-        draw(0,f,nullptr);
+        const auto *cockpit=vr_cockpit_mesh();
+        cockpitMesh(eye,f,cockpit->opaque,cockpit->opaque_count);
         quad(eye,f,{{{-0.575,-0.21,-0.86},{0.575,-0.21,-0.86},{0.575,-0.602,-0.86},{-0.575,-0.602,-0.86}}},white,0,91.0f/200,1,1);
         draw(1,f,&panel);
+        context->OMSetBlendState(glassBlend.Get(),nullptr,~0u);context->OMSetDepthStencilState(glassDepth.Get(),0);
+        cockpitMesh(eye,f,cockpit->glass,cockpit->glass_count);
+        context->OMSetBlendState(nullptr,nullptr,~0u);context->OMSetDepthStencilState(depthState.Get(),0);
         /* Prototype HUD: original vector symbology on an aircraft-fixed transparent plane.
          * It is finite-depth, not an optical collimated HUD. This is documented for headset QA. */
         quad(eye,f,{{{-0.6211,0.2708,-1.0},{0.6289,0.2708,-1.0},{0.6289,-0.2031,-1.0},{-0.6211,-0.2031,-1.0}}},white,0,0,1,91.0f/200);
@@ -487,16 +510,43 @@ public:
         auto *surface=SDL_CreateSurfaceFrom(im.w,im.h,SDL_PIXELFORMAT_XRGB8888,data.data(),im.w*4);
         if(surface){SDL_SavePNG(surface,path);SDL_DestroySurface(surface);}return data;
     }
+    void dumpCockpitViews(int w,int h) {
+        Image inspected;inspected.w=inspected.h=1024;
+        D3D11_TEXTURE2D_DESC d{};d.Width=d.Height=1024;d.MipLevels=d.ArraySize=1;
+        d.Format=DXGI_FORMAT_B8G8R8A8_UNORM_SRGB;d.SampleDesc.Count=1;d.BindFlags=D3D11_BIND_RENDER_TARGET;
+        dx(device->CreateTexture2D(&d,nullptr,&inspected.texture),"cockpit inspection image");
+        ComPtr<ID3D11RenderTargetView> target;dx(device->CreateRenderTargetView(inspected.texture.Get(),nullptr,&target),"cockpit inspection target");
+        auto depth=createDepth(1024,1024);
+        const char *names[]={"front","left","right","rear"};
+        const double yaw[]={0,pi/2,-pi/2,pi};VrFov f{-pi/4,pi/4,pi/4,-pi/4};
+        for(int k=0;k<4;k++) {
+            VrPose p{{0,std::sin(yaw[k]/2),0,std::cos(yaw[k]/2)},{0,0,0}};
+            vr_gpu_begin(&geometry[0]);bool ok=enh_vr_render(&p,nullptr,w,h);vr_gpu_end();
+            if(!ok||geometry[0].invalid)throw std::runtime_error("Cockpit inspection world capture failed");
+            renderWorld(0,f,1024,1024);
+            const float clear[4]={0,0,0,1};context->ClearRenderTargetView(target.Get(),clear);
+            context->ClearDepthStencilView(depth.Get(),D3D11_CLEAR_DEPTH,1,0);targetSRGB=true;
+            render(0,p,f,target.Get(),depth.Get(),0,0,1024,1024,true);
+            char name[80];std::snprintf(name,sizeof name,"vr-cockpit-%s.png",names[k]);readWorld(inspected,name);
+        }
+    }
     void dumpGpuEyes(const std::array<VrPose,2> &poses,const std::array<VrFov,2> &fovs,int w,int h) {
-        if(!vr_options.dump||dumped)return;
+        if(!vr_options.dump||dumped||!vr_scene_initialized())return;
+        VrSceneInfo info;vr_scene_info(&info);
+        if(FILE *file=std::fopen("vr-scene.json","w")) {
+            std::fprintf(file,"{\"site\":%d,\"carrier\":%d,\"deck\":%d,\"aircraft\":%d,\"camera\":%d}\n",info.site,info.carrier,info.deck,info.aircraft,info.camera);std::fclose(file);
+        }
         readWorld(world[0],"vr-left.png");readWorld(world[1],"vr-right.png");
         // Differential check at precisely the software reference's projection.
         const int n=4;double cx=(w-320*n)/2.0+159*n,cy=h/2.0;
         VrFov ref{std::atan(-cx/(256*n)),std::atan((w-cx)/(256*n)),std::atan(cy/(192*n)),std::atan((cy-h)/(192*n))};
         const bool validate=SDL_getenv("F117_VR_VALIDATE")!=nullptr;
         const VrQuat turns[]={{0,0,0,1},{0,float(std::sin(.25)),0,float(std::cos(.25))},
-            {float(std::sin(.2)),0,0,float(std::cos(.2))},{0,0,float(std::sin(.4)),float(std::cos(.4))}};
-        for(int k=0;k<(validate?4:1);k++) {
+            {float(std::sin(.2)),0,0,float(std::cos(.2))},{0,0,float(std::sin(.4)),float(std::cos(.4))},
+            {std::sin(-.5),0,0,std::cos(-.5)},
+            vr_multiply({0,std::sin(.5),0,std::cos(.5)},{std::sin(-.35),0,0,std::cos(-.35)}),
+            vr_multiply({0,std::sin(-.5),0,std::cos(-.5)},{std::sin(-.35),0,0,std::cos(-.35)})};
+        for(int k=0;k<(validate?7:1);k++) {
             VrPose check=poses[0];check.orientation=vr_multiply(check.orientation,turns[k]);
             vr_gpu_begin(&geometry[0]);bool ok=enh_vr_render(&check,nullptr,w,h);vr_gpu_end();
             if(!ok||geometry[0].invalid)throw std::runtime_error("GPU validation geometry failed");
@@ -509,11 +559,12 @@ public:
                 if(surface){SDL_SavePNG(surface,name);SDL_DestroySurface(surface);}
             }
         }
+        dumpCockpitViews(w,h);
         vr_gpu_begin(&geometry[0]);bool ok=enh_vr_render(&poses[0],nullptr,w,h);vr_gpu_end();
         if(!ok)throw std::runtime_error("Restore native GPU eye after validation");
         int ew=preview?(vr_options.resolution?vr_options.resolution:1920):swaps[0].w;
         int eh=preview?ew:swaps[0].h;renderWorld(0,fovs[0],ew,eh);
-        dumped=true;note("Wrote native GPU eyes and matched-projection software/GPU references");
+        dumped=true;note("Wrote native GPU eyes, matched-projection references and four enclosed-cockpit views");
     }
     void dumpMirror(int size) {
         if(!vr_options.dump || !mirror || mirrorDumped)return;
@@ -650,11 +701,11 @@ public:
             context->ClearRenderTargetView(mirrorRT.Get(),clear);context->ClearDepthStencilView(mirrorDepth.Get(),D3D11_CLEAR_DEPTH,1,0);
             // Square eyes, side by side, letterboxed in the square desktop window.
             for(int i=0;i<2;i++)render(i,poses[i],fovs[i],mirrorRT.Get(),mirrorDepth.Get(),float(i*512),256,512,512,flight);
-            if(flight)dumpMirror(1024);
+            if(flight && (dumped||!gpuWorld))dumpMirror(1024);
             dx(mirror->Present(0,0),"present stereo mirror");
         }
         lastFrame=SDL_GetTicksNS();frameMS+=(lastFrame-started)/1e6;frames++;
-        if(benchmark && flight) {
+        if(benchmark && flight && (!vr_options.dump || dumped)) {
             if(benchFrames==benchWarmup)benchStarted=workStarted;
             if(benchFrames++>=benchWarmup) {
                 benchMS+=(lastFrame-workStarted)/1e6;benchBytes+=uploadBytes;

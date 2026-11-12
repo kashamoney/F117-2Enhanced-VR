@@ -8,6 +8,8 @@ extern "C" {
 typedef struct { double x, y, z, w; } VrQuat;
 typedef struct { VrQuat orientation; double position[3]; } VrPose;
 typedef struct { double left, right, up, down; } VrFov; /* tangent angles, in radians */
+enum { VR_PILOT_EYE_UNITS = 0x18 }; /* view_frame's original pilot-eye datum */
+typedef struct { int site, carrier, deck, aircraft, camera; } VrSceneInfo;
 typedef struct {
     int mode;                 /* 0 desktop, 1 OpenXR, 2 desktop stereo preview */
     int resolution;           /* GPU eye height; 0 = OpenXR recommendation. Software fallback: square size. */
@@ -46,6 +48,8 @@ bool vr_eye_active(void);
 double vr_near_depth(void); /* camera depth of a physical 3 cm near plane */
 bool enh_vr_render(const VrPose *eye, uint32_t *out, int w, int h);
 bool enh_vr_ready(void);
+bool vr_scene_initialized(void);
+void vr_scene_info(VrSceneInfo *info);
 void enh_vr_frame(void);
 void vr_scene_check(void);
 /* Destination holds (320*scale)*(200*scale) pixels, preserving enhanced vectors/MFDs. */

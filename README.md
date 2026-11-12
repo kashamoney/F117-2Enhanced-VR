@@ -64,7 +64,7 @@ Needs CMake 3.24, a C11 compiler and SDL 3 (MSYS2 `mingw64`: `mingw-w64-x86_64-s
 ## Experimental seated VR (Windows / OpenXR)
 
 This development branch adds stereoscopic flight with headset rotation and position,
-seated recentering, a simple geometric cockpit, and the original live instrument panel.
+seated recentering, an enclosed faceted cockpit, and the original live instrument panel.
 Menus are displayed on a virtual screen. Keyboard and gamepad flight controls stay the same.
 The backend uses OpenXR through SteamVR and Direct3D 11, including headsets connected
 through the Oasis driver such as the Samsung Odyssey+. It is an experimental prototype;
@@ -93,7 +93,7 @@ same practice scenario on the desktop.
 | Control | Action |
 |---|---|
 | F12 | Recenter the seated position and heading; look straight ahead when pressing it |
-| F11 | Show/hide the prototype cockpit |
+| F11 | Show/hide the cockpit |
 | Ctrl + arrow keys | Look around in desktop preview (release Ctrl to fly with the arrow keys) |
 | Alt + P / Enter | Pause / resume the simulation; head tracking continues while paused |
 | Original game keys | Targeting, weapons, flaps, gear, throttle, and flight |
@@ -156,7 +156,8 @@ The game's exaggerated vertical scale and high-altitude compression are preserve
 so HUD altitude is not a literal VR ruler.
 `--vr-no-cockpit` starts with the cockpit hidden. `--classic` disables VR.
 `--vr-dump` writes the first pair of eye images, the GPU cockpit mirror, and matched-projection
-GPU/software reference images to the working directory (one-time readback; leave it off while benchmarking).
+GPU/software reference images and front/left/right/rear cockpit previews to the working directory.
+Capture waits for a settled mission; readbacks are excluded from benchmark warmup/samples.
 Session logs are in `work/vr-session/f117-vr.log`; original crash logs remain beside the exe.
 
 Implementation and current limits:
@@ -166,7 +167,13 @@ Implementation and current limits:
 * Sub-foot eye offsets are applied to 16.16 camera translations, with the terrain/model
   scale tracked through the sorted object queue. The eye baseline survives integer rounding.
 * The original cockpit pictures are reused on an aircraft-fixed instrument panel. The
-  canopy frame, consoles, floor and seat are simple new geometry, not a detailed F-117 interior.
+  enclosed lower hull, footwell, rear bulkhead, faceted glazed canopy, sills, ejection seat/harness,
+  side consoles, stick, throttle, pedals and display bezels are cached procedural geometry.
+  This is an approximation of the interior; switches remain decorative and original instruments stay live.
+* VR uses the original pilot-eye datum (`aircraft altitude + 0x18`) plus tracked physical
+  head displacement. Using an unrelated two-metre offset put the camera below the carrier
+  deck model and made the ship disappear. `Carrier-VR.cmd` already selects a carrier; its
+  mission and pilot setup are unchanged.
 * The prototype HUD extracts symbols using the compositor's vector drawing records onto a
   transparent, finite-distance surface. It is not a collimated optical HUD; target alignment
   needs review in the headset. An optical HUD with a defined viewing aperture is follow-up work.
@@ -211,7 +218,11 @@ after runtime warmup. The old 4096-square software path measured 76.68 ms of wor
 stereo frame. Mean upload falls from about 128 MiB to 3.9 MiB per frame. These are local
 measurements; startup, other workloads, and mission complexity can affect delivery.
 The GPU/software image comparison (`--validate`, requires NumPy/Pillow) checks forward,
-yaw, pitch and roll at matching projections. Headset comfort and sustained flight are
+yaw, pitch and roll at matching projections after mission initialization has settled. Three
+additional downward views require visible carrier-deck coverage; this catches a missing
+ship even when both VR software/GPU paths share a wrong camera datum. `--vr-selftest`
+also ray-tests the actual cockpit triangles for lower/rear enclosure and clear glazed
+window sightlines. Headset comfort and sustained flight are
 still user checks. To measure the actual runtime with a longer warmup:
 
 ```powershell
