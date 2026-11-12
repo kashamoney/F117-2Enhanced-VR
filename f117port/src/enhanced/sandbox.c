@@ -268,6 +268,7 @@ void enh_present_done(u64 ns)
 }
 static u8 *look_live;          /* the live DAC / CRTC / attribute / sequencer while a refresh's main pass composes */
 static Uint64 t_flip, flip_ema, t_last_refresh;   /* display clock (ns) */
+static VrClock vr_clock;
 static double est_cost;        /* ns a refresh takes (EMA) */
 static u64 deadline_tick;
 static bool deadline_set;
@@ -348,6 +349,12 @@ void enh_frame_begin(void)
     Uint64 t0 = SDL_GetTicksNS();
     reg_build();
     img_a.valid = image_save(&img_a) && enh_canvas_snap_take(&img_a.cv);
+    if(vr_enabled()&&img_a.valid) {
+        int ticks=host_frame_ticks();
+        Uint64 period=ticks>0?(Uint64)ticks*VGA_FRAME_NS_NUM/VGA_FRAME_NS_DEN:flip_ema;
+        if(ticks<=0&&(!period||period>250000000))period=100000000;
+        vr_clock_publish(&vr_clock,dclock(),t_flip,period);
+    }
     ns_take += SDL_GetTicksNS() - t0;
     n_takes++;
     if (stream) frame_begin_refresh();                        /* S4.3 */
@@ -561,6 +568,7 @@ void enh_frame_end(void)
 
 void enh_display_hold(void)
 {
+    vr_clock.held=true;
     if (!stream || !stream_show || !img_a.valid || enh_sbx || enh_compose_menu()) return;
     refresh(1.0, false);                                      /* the paused frame as the faithful one (the step has not run yet: A_k is still this frame's) */
 }
@@ -571,6 +579,7 @@ void enh_flight_end(void)
     disp_new = false;
     img_a.valid = false;
     t_flip = flip_ema = 0;
+    memset(&vr_clock,0,sizeof vr_clock);
     enh_interp_reset();
     if (trace_f) fflush(trace_f);
 }
@@ -599,7 +608,9 @@ bool enh_vr_ready(void)
         && prog_current_id() == PROG_VGAME;
 }
 static double vr_alpha;
-void enh_vr_frame(void) { vr_alpha = alpha_at(dclock()); }
+static VrFrameState vr_rendered;
+VrFrameState enh_vr_frame_state(void) { return vr_rendered; }
+void enh_vr_frame(void) { vr_alpha = enh_interp_lerp()?vr_clock_sample(&vr_clock,dclock()):1.0; }
 bool enh_vr_render(const VrPose *eye, u32 *out, int w, int h)
 {
     if (!enh_vr_ready() || w != enh_cv.lw || h != enh_cv.lh) return false;
@@ -609,6 +620,7 @@ bool enh_vr_render(const VrPose *eye, u32 *out, int w, int h)
     enh_sbx = true;
     enh_interp_apply(vr_alpha);
     const int heading = DSW(0x2DEE), pitch = DSW(0x2DF0), roll = DSW(0x2DF2);
+    vr_rendered=(VrFrameState){vg_frame,vr_alpha,DSSL(0xBA10),DSSL(0xC02A),heading,pitch,roll};
     int ch, cp, cr;
     vr_camera(eye, heading, pitch, roll, &ch, &cp, &cr);
     vr_eye_begin(eye, heading, pitch, roll);

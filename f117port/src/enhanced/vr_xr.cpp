@@ -161,6 +161,8 @@ public:
     Backend() {log=std::fopen("f117-vr.log","w");}
     void note(const char *s) {std::fprintf(stderr,"[VR] %s\n",s);if(log){std::fprintf(log,"%s\n",s);std::fflush(log);}}
     ~Backend() {
+        if(capture){try{dumpLiveCapture();}catch(const std::exception &e){note(e.what());}}
+        if(timing)std::fclose(timing);
         for(auto &f:geometry)vr_gpu_free(&f);
         if(context) context->ClearState();
         for(auto &s:swaps) if(s.handle) xrDestroySwapchain(s.handle);
@@ -379,6 +381,12 @@ public:
     }
     void init(HWND hwnd,bool p) {
         preview=p;if(!preview)createInstance();createDevice();createMirror(hwnd);if(!preview)createSession();
+        if(SDL_getenv("F117_VR_TIMING")||SDL_getenv("F117_VR_CAPTURE_LIVE")) {
+            timing=std::fopen("vr-timing.csv","w");
+            if(!timing)throw std::runtime_error("Cannot open vr-timing.csv");
+            std::setvbuf(timing,nullptr,_IOFBF,65536);
+            std::fprintf(timing,"submission,eye,display_time,clock_ns,frame,alpha,x,y,heading,pitch,roll,capture\n");
+        }
         char b[160];std::snprintf(b,sizeof b,"%s ready; %s world; F12 recenter, F11 cockpit",preview?"Desktop stereo preview":"OpenXR",gpuWorld?"GPU geometry at eye resolution":"software fallback");note(b);
         if(preview&&gpuWorld){std::snprintf(b,sizeof b,"Preview world target: %dx%d, %ux MSAA",vr_options.resolution?vr_options.resolution:1920,vr_options.resolution?vr_options.resolution:1920,samples);note(b);}
     }
@@ -392,6 +400,10 @@ public:
             dx(device->CreateShaderResourceView(i.texture.Get(),nullptr,&i.srv),"image view");i.w=w;i.h=h;
         }
         context->UpdateSubresource(i.texture.Get(),0,nullptr,data,w*4,0);
+    }
+    void requestLiveCapture() {
+        if(captureCount){note("Live burst already recorded; close the game to save it");return;}
+        captureArmed=true;note("Recording 180 live stereo frames; close the game to save them");
     }
     void draw(int mode,const VrFov &fov,Image *image,int n=1) {
         if(vertices.empty())return;
@@ -685,6 +697,7 @@ public:
         const Uint64 panelDone=SDL_GetTicksNS();
         double geometryMS=0;
         const int size=vr_canvas_resolution();
+        std::array<VrFrameState,2> states{};
         if(flight) {
             enh_vr_frame(); // latch one alpha for both eyes
             for(int i=0;i<2;i++) {
@@ -702,6 +715,7 @@ public:
                     if(!enh_vr_render(&poses[i],pixels[i].data(),size,size)){flight=false;break;}
                     upload(world[i],pixels[i].data(),size,size);
                 }
+                states[i]=enh_vr_frame_state();
             }
             if(flight&&!gpuWorld)dumpEyes(size);
             if(flight&&gpuWorld)dumpGpuEyes(poses,fovs,w,h);
@@ -739,14 +753,24 @@ public:
             XrFrameEndInfo info{XR_TYPE_FRAME_END_INFO};info.displayTime=frame.predictedDisplayTime;info.environmentBlendMode=XR_ENVIRONMENT_BLEND_MODE_OPAQUE;info.layerCount=1;info.layers=layers;
             xr(xrEndFrame(session,&info),"submit headset frame");begun=false;
         }
+        int captured=-1;
         if(mirror) {
             targetSRGB=true;
             context->ClearRenderTargetView(mirrorRT.Get(),clear);context->ClearDepthStencilView(mirrorDepth.Get(),D3D11_CLEAR_DEPTH,1,0);
             // Square eyes, side by side, letterboxed in the square desktop window.
             for(int i=0;i<2;i++)render(i,poses[i],fovs[i],mirrorRT.Get(),mirrorDepth.Get(),float(i*512),256,512,512,flight);
             if(flight && (dumped||!gpuWorld))dumpMirror(1024);
+            if(flight&&vr_scene_initialized()&&SDL_getenv("F117_VR_CAPTURE_LIVE")&&(benchmark||captureArmed))captured=captureLiveFrame();
             dx(mirror->Present(0,0),"present stereo mirror");
         }
+        if(timing&&flight)for(int i=0;i<2;i++) {
+            const auto &s=states[i];
+            std::fprintf(timing,"%llu,%d,%lld,%llu,%llu,%.9f,%d,%d,%d,%d,%d,%d\n",
+                (unsigned long long)submission,i,(long long)frame.predictedDisplayTime,
+                (unsigned long long)workStarted,(unsigned long long)s.frame,s.alpha,
+                s.x,s.y,s.heading,s.pitch,s.roll,captured);
+        }
+        submission++;
         lastFrame=SDL_GetTicksNS();frameMS+=(lastFrame-started)/1e6;frames++;
         if(benchmark && flight && (!vr_options.dump || dumped)) {
             if(benchFrames==benchWarmup)benchStarted=workStarted;
@@ -770,9 +794,45 @@ public:
         }
     }
 private:
+    // Bounded GPU-only burst of the live stereo mirror. Readback/PNG work occurs
+    // at shutdown, after measurement, so capture does not stall every VR frame.
+    ComPtr<ID3D11Texture2D> capture;
+    unsigned captureCount=0;
+    bool captureArmed=false;
+    static constexpr unsigned captureLimit=180;
+    int captureLiveFrame() {
+        if(captureCount>=captureLimit)return -1;
+        ComPtr<ID3D11Resource> src;mirrorRT->GetResource(&src);
+        if(!capture){
+            ComPtr<ID3D11Texture2D> tex;dx(src.As(&tex),"live mirror texture");
+            D3D11_TEXTURE2D_DESC d;tex->GetDesc(&d);
+            d.Width=1024;d.Height=512;d.ArraySize=captureLimit;d.BindFlags=0;d.MiscFlags=0;
+            dx(device->CreateTexture2D(&d,nullptr,&capture),"live capture burst");
+        }
+        context->OMSetRenderTargets(0,nullptr,nullptr);
+        const D3D11_BOX region{0,256,0,1024,768,1};
+        context->CopySubresourceRegion(capture.Get(),captureCount,0,0,0,src.Get(),0,&region);
+        return int(captureCount++);
+    }
+    void dumpLiveCapture() {
+        D3D11_TEXTURE2D_DESC d;capture->GetDesc(&d);d.ArraySize=1;
+        d.Usage=D3D11_USAGE_STAGING;d.CPUAccessFlags=D3D11_CPU_ACCESS_READ;
+        ComPtr<ID3D11Texture2D> staging;dx(device->CreateTexture2D(&d,nullptr,&staging),"live capture readback");
+        for(unsigned i=0;i<captureCount;i++){
+            context->CopySubresourceRegion(staging.Get(),0,0,0,0,capture.Get(),i,nullptr);
+            D3D11_MAPPED_SUBRESOURCE m;dx(context->Map(staging.Get(),0,D3D11_MAP_READ,0,&m),"live capture map");
+            auto *surface=SDL_CreateSurfaceFrom(1024,512,SDL_PIXELFORMAT_RGBA32,m.pData,m.RowPitch);
+            char name[80];std::snprintf(name,sizeof name,"vr-live-%03u.png",i);
+            bool ok=surface&&SDL_SavePNG(surface,name);if(surface)SDL_DestroySurface(surface);
+            context->Unmap(staging.Get(),0);if(!ok)throw std::runtime_error("Cannot save live capture PNG");
+        }
+        note("Wrote live stereo frames and vr-timing.csv with original frame timestamps");
+    }
     ComPtr<ID3D11DepthStencilView> eyeDepth;
     int depthW=0,depthH=0;
     bool mirrorDumped=false;
+    FILE *timing=nullptr;
+    uint64_t submission=0;
 };
 std::unique_ptr<Backend> backend;
 bool failed=false;
@@ -791,6 +851,10 @@ extern "C" void vr_tick(const uint32_t *pixels,int w,int h,bool changed) {
 extern "C" bool vr_wants_quit(void) {return failed || (backend && backend->exit);}
 extern "C" bool vr_key(int sc,bool down,bool repeat) {
     if(!backend)return false;
+    if(sc==SDL_SCANCODE_F9&&SDL_getenv("F117_VR_CAPTURE_LIVE")) {
+        if(down&&!repeat)backend->requestLiveCapture();
+        return true;
+    }
     if(enh_vr_ready()) {
         // ENH: headset tracking owns the view. Keep the canonical front cockpit for
         // live instruments and a fixed-size eye canvas; these keys normally change its art/layout.

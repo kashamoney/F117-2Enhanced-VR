@@ -4,6 +4,8 @@ param(
     [switch]$Diagnostic,
     [switch]$DumpEyes,
     [switch]$CarrierPractice,
+    [switch]$TraceWorld,
+    [switch]$RecordLive,
     [ValidateRange(0,4096)][int]$Resolution = 0,
     [switch]$Software,
     [ValidateRange(0.1,10)][double]$WorldScale = 1.0,
@@ -12,6 +14,8 @@ param(
 $ErrorActionPreference = 'Stop'
 $previousKeyScript = $env:F117_KEYS
 $previousShellScript = $env:F117_SHELL_SCRIPT
+$previousVrTiming = $env:F117_VR_TIMING
+$previousVrCapture = $env:F117_VR_CAPTURE_LIVE
 $repoPath = Split-Path -Parent $PSScriptRoot
 $exePath = Join-Path $repoPath 'f117port\build-vr\f117-enhanced-vr.exe'
 if (-not (Test-Path -LiteralPath $exePath)) { & (Join-Path $PSScriptRoot 'Build-VR.ps1') }
@@ -40,6 +44,11 @@ if ($Diagnostic) {
 }
 Write-Output $(if ($Preview) { 'Starting desktop stereo preview. Ctrl+arrows look around.' } elseif ($Diagnostic) { 'Checking SteamVR / OpenXR headset and D3D11 adapter.' } else { 'Start SteamVR with your headset tracking, then use this window for game input.' })
 Write-Output "F12: recenter seat. F11: cockpit toggle. Logs: $sessionPath"
+if ($TraceWorld -or $RecordLive) { $env:F117_VR_TIMING = '1' }
+if ($RecordLive) {
+    $env:F117_VR_CAPTURE_LIVE = '1'
+    Write-Output 'F9: record a short live stereo burst while flying. Close the game to save PNGs and timing data.'
+}
 Push-Location $sessionPath
 try {
     & $exePath @gameArgs
@@ -48,6 +57,8 @@ try {
     }
 } finally {
     Pop-Location
+    $env:F117_VR_TIMING = $previousVrTiming
+    $env:F117_VR_CAPTURE_LIVE = $previousVrCapture
     if ($CarrierPractice) {
         $env:F117_KEYS = $previousKeyScript
         $env:F117_SHELL_SCRIPT = $previousShellScript

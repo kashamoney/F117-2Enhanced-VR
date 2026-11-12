@@ -14,6 +14,18 @@
 #define VR_PI 3.14159265358979323846
 #define VR_METRES_PER_UNIT (512000.0 / 1048576.0)
 VrOptions vr_options = { .resolution = 0, .world_scale = 1.0, .cockpit = true };
+void vr_clock_publish(VrClock *clock,uint64_t now,uint64_t flip,uint64_t period) {
+    if(!period)period=100000000;
+    /* A stale flip belongs to the pre-pause frame, not the new snapshot. */
+    uint64_t start=!clock->held&&flip&&flip<=now&&now-flip<=period*2?flip:now;
+    *clock=(VrClock){start,period,false};
+}
+double vr_clock_sample(const VrClock *clock,uint64_t now) {
+    if(clock->held||!clock->period)return 1;
+    if(now<=clock->start)return 0;
+    double alpha=(double)(now-clock->start)/clock->period;
+    return alpha<1?alpha:1;
+}
 static bool eye_active;
 static double eye_delta[3], object_units = 1.0, queued_units[50];
 
@@ -152,6 +164,23 @@ int vr_selftest(void)
     int fail=vr_cockpit_selftest();
 #define CHECK(c,msg) do { if(!(c)) {fprintf(stderr,"VR FAIL: %s\n",msg);fail++;} } while(0)
     VrPose eye={{0,0,0,1},{0,0,0}};
+    /* Replay the real lifecycle: eye -> canonical flip -> old eye again ->
+     * next snapshot. Only publishing a new snapshot may restart alpha. */
+    VrClock clock={0};const uint64_t step=100000000;
+    vr_clock_publish(&clock,1000000000,1000000000,step);
+    CHECK(fabs(vr_clock_sample(&clock,1050000000)-.5)<1e-9,"mid-step interpolation");
+    uint64_t nextFlip=1100000000;
+    CHECK(vr_clock_sample(&clock,nextFlip+10000000)==1,"old snapshot stays complete after the next flip");
+    vr_clock_publish(&clock,nextFlip+20000000,nextFlip,step);
+    CHECK(fabs(vr_clock_sample(&clock,nextFlip+20000000)-.2)<1e-9,"next snapshot starts at its own flip");
+    clock.held=true;
+    vr_clock_publish(&clock,1200000000,1160000000,step);
+    CHECK(vr_clock_sample(&clock,1200000000)==0,"short pause also resumes at the completed pose");
+    clock.held=true;
+    CHECK(vr_clock_sample(&clock,90000000000)==1,"pause holds the final world pose");
+    vr_clock_publish(&clock,90000000000,nextFlip,step);
+    CHECK(vr_clock_sample(&clock,90000000000)==0&&fabs(vr_clock_sample(&clock,90050000000)-.5)<1e-9,
+          "long pause does not inflate the resumed interpolation period");
     int h,p,r;
     for(int a=-20000;a<=20000;a+=5000) {
         vr_camera(&eye,a,1500,-2300,&h,&p,&r);

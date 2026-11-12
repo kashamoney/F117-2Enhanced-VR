@@ -11,6 +11,16 @@ typedef struct { double left, right, up, down; } VrFov; /* tangent angles, in ra
 enum { VR_PILOT_EYE_UNITS = 0x18 }; /* view_frame's original pilot-eye datum */
 typedef struct { int site, carrier, deck, aircraft, camera; } VrSceneInfo;
 typedef struct {
+    uint64_t frame;
+    double alpha;
+    int32_t x,y;
+    int heading,pitch,roll;
+} VrFrameState;
+/* Snapshot-owned time: later canonical flips cannot restart an old eye pose. */
+typedef struct { uint64_t start,period; bool held; } VrClock;
+void vr_clock_publish(VrClock *clock,uint64_t now,uint64_t flip,uint64_t period);
+double vr_clock_sample(const VrClock *clock,uint64_t now);
+typedef struct {
     int mode;                 /* 0 desktop, 1 OpenXR, 2 desktop stereo preview */
     int resolution;           /* GPU eye height; 0 = OpenXR recommendation. Software fallback: square size. */
     double world_scale;       /* physical metres per game metre */
@@ -51,6 +61,7 @@ bool enh_vr_ready(void);
 bool vr_scene_initialized(void);
 void vr_scene_info(VrSceneInfo *info);
 void enh_vr_frame(void);
+VrFrameState enh_vr_frame_state(void); /* aircraft pose actually used by the last eye pass */
 void vr_scene_check(void);
 /* Destination holds (320*scale)*(200*scale) pixels, preserving enhanced vectors/MFDs. */
 void vr_capture_desktop(const uint32_t *src, int w, int h, uint32_t *out, int scale);

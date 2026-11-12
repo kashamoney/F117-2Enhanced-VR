@@ -253,6 +253,43 @@ For six-times slow motion, use `-framerate 15`, add `-vf fps=30`, and set `-fram
 edge detail that video compression may obscure. Headset inspection is still required
 to judge the remaining shimmer during flight.
 
+VR world smoothing uses a clock owned by the current simulation snapshot. A
+canonical screen flip must not restart interpolation while that older snapshot is
+still being shown. The original simulation remains about 10 steps per second;
+the VR camera interpolates between those steps at headset rate. Pause holds the
+completed pose, and the resumed snapshot gets a normal step interval.
+
+To audit actual moving-world pacing, including both eye poses and predicted
+display times, use a real-clock mission with the normal frame-stream setting:
+
+```powershell
+python tools/benchmark_vr.py --exe f117port/build-vr/f117-enhanced-vr.exe --game-dir ../F117-Enhanced-play/Game --headset --pacing --frames 900 --capture-live
+```
+
+This differs from the frozen roll sweep: the simulation advances in real time,
+both eye passes record the aircraft pose they actually used, and up to 180 live
+stereo mirror frames are copied into a bounded GPU buffer. Readback and PNG
+encoding happen at shutdown, after timing measurement. `vr-timing.csv` checks
+matching stereo state and detects interpolation restarting within one simulation
+pair. The previous clock produced 110 restarts across 115 simulation frames;
+the corrected path has zero and submits 90 frames/s in this local check.
+
+For a recording while playing, launch `Record-VR.cmd`, fly until the issue is
+visible, and press **F9** for one short burst. Close the game to write
+`work/vr-session/vr-live-*.png` and `vr-timing.csv`. `Carrier-VR.cmd -TraceWorld`
+records only the lightweight timing trace. Normal launches do neither.
+
+```powershell
+python tools/encode_vr_live.py work/vr-session
+python tools/encode_vr_live.py work/vr-session --slow 6
+python tools/check_vr_pacing.py work/vr-session/vr-timing.csv
+```
+
+The encoder uses original submission timestamps, including gaps; it does not
+turn a synthetic camera sweep into an assumed live frame rate. These recordings
+show the application's stereo mirror and world motion. SteamVR reprojection and
+the physical headset display/optics are outside that mirror capture.
+
 VR-enabled builds now produce `f117port/build-vr/f117-enhanced-vr.exe`. The launch scripts
 select this executable; an already running older build picks up the changes on relaunch.
 

@@ -35,18 +35,24 @@ def main():
     p.add_argument('--headset', action='store_true')
     p.add_argument('--validate', action='store_true', help='also compare GPU/software image interiors (requires numpy and Pillow)')
     p.add_argument('--temporal', action='store_true', help='capture and check a frozen airborne roll sweep')
+    p.add_argument('--pacing', action='store_true', help='use the real simulation clock and trace both submitted eye poses')
+    p.add_argument('--capture-live', action='store_true', help='with --pacing, save 180 live stereo mirror frames at shutdown')
     p.add_argument('--capture-size', type=int, default=512)
     p.add_argument('--capture-steps', type=int, default=40)
     p.add_argument('--hz', type=float, default=90)
-    p.add_argument('--frames', type=int, default=30)
+    p.add_argument('--frames', type=int, help='default 900 for pacing checks, otherwise 30')
     p.add_argument('--warmup', type=int, help='default 5 preview frames or 120 headset frames, allowing runtime pacing to settle')
     a = p.parse_args()
+    if a.frames is None:
+        a.frames = 900 if a.pacing else 30
     if not 1 <= a.frames <= 900 or a.hz <= 0 or (a.warmup is not None and not 0 <= a.warmup <= 900):
         p.error('Use 1..900 frames, a positive refresh rate, and 0..900 warmup frames')
     if (a.validate or a.temporal or a.samples is not None) and a.software:
         p.error('--validate, --temporal and --samples require the GPU renderer')
     if a.validate and a.temporal:
         p.error('Run carrier validation and the airborne temporal capture separately')
+    if (a.pacing and (a.temporal or a.validate)) or (a.capture_live and not a.pacing):
+        p.error('Use --pacing separately from frozen/image checks; --capture-live requires --pacing')
     if a.capture_size not in (256,512,1024) or not 16 <= a.capture_steps <= 360:
         p.error('Capture size must be 256, 512 or 1024; use 16..360 capture steps')
     directory = ROOT / 'work/vr-benchmark' / uuid.uuid4().hex[:10]
@@ -70,8 +76,13 @@ def main():
     if a.temporal:
         env.update(F117_VR_TEMPORAL='1',F117_TEST_POSE='6,0,1500,0',
                    F117_VR_CAPTURE_SIZE=str(a.capture_size),F117_VR_CAPTURE_STEPS=str(a.capture_steps))
+    if a.pacing:
+        env.pop('F117_VCLOCK',None)
+        env.update(F117_VR_TIMING='1',F117_TEST_POSE='6,0,1500,8192')
+    if a.capture_live:
+        env['F117_VR_CAPTURE_LIVE']='1'
     cmd = [str(a.exe.resolve()), '--vr' if a.headset else '--vr-preview', '--vr-resolution', str(a.resolution),
-           '--game-dir', str(game), '--fps', 'off', '--dither', 'fine']
+           '--game-dir', str(game), '--fps', 'vsync' if a.pacing else 'off', '--dither', 'fine']
     if a.software:
         cmd += ['--vr-software']
     if a.validate or a.temporal:
@@ -88,6 +99,9 @@ def main():
     if a.temporal:
         from check_vr_temporal import check
         check(directory)
+    if a.pacing:
+        from check_vr_pacing import check
+        check(directory/'vr-timing.csv')
     if a.validate:
         import numpy as np
         from PIL import Image
