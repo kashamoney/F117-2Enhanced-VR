@@ -169,16 +169,19 @@ Implementation and current limits:
   memory and canvas state are restored afterward; eye rendering never advances gameplay.
 * Sub-foot eye offsets are applied to 16.16 camera translations, with the terrain/model
   scale tracked through the sorted object queue. The eye baseline survives integer rounding.
-* The original cockpit pictures are reused on an aircraft-fixed instrument panel. The
-  enclosed lower hull, footwell, rear bulkhead, faceted glazed canopy, sills, ejection seat/harness,
+* Ten live regions of the original cockpit image are mapped onto physical instrument faces.
+  One layout supplies both the source pixel rectangles and the matching 3D housings;
+  the old painted coaming is replaced by a solid coaming joined to the windshield sill.
+  The original displays, warning lamps, mode bar, countermeasures and engine/weapon readouts stay live.
+  The enclosed lower hull, footwell, rear bulkhead, faceted glazed canopy, sills, ejection seat/harness,
   side consoles, stick, throttle, pedals and display bezels are cached procedural geometry.
   The canopy has five flat panes: a near-triangular raked windscreen with a narrow
   clipped apex, two triangular front quarter lights and two inward-leaning side windows.
   The side sills rise toward narrow aft tips, under an opaque faceted roof. Quarter lights share their rear posts
   directly with the side windows. Openings are deliberately generous for visibility in VR.
   This is an approximation of the interior; switches remain decorative and original instruments stay live.
-  The decorative bezels are recessed and the consoles start beside the pilot to keep the
-  full-size live panel visible. A mesh ray test checks 1,683 panel sightlines from three seated eye positions.
+  Instrument housings stay behind their texture faces and the consoles start beside the pilot.
+  A mesh ray test checks 4,590 instrument sightlines from three seated eye positions.
 * VR uses the original pilot-eye datum (`aircraft altitude + 0x18`) plus tracked physical
   head displacement. Using an unrelated two-metre offset put the camera below the carrier
   deck model and made the ship disappear. `Carrier-VR.cmd` already selects a carrier; its
@@ -187,8 +190,13 @@ Implementation and current limits:
   routines on an empty sandboxed canvas at the same interpolated aircraft pose as the eyes.
   Its independent transparent layer includes readouts that vector-only provenance omitted;
   scenery cannot enter it, and display/canonical drawing tags cannot cut holes in it.
-  It is not a collimated optical HUD; target alignment
-  needs review in the headset. An optical HUD with a defined viewing aperture is follow-up work.
+  The symbology is collimated through an aircraft-fixed six-sided combiner: each eye samples
+  the image from its ray through the glass, preserving the original angular scale without
+  the former one-metre parallax. Glass, rim and support arms are physical geometry; the
+  original painted rim is skipped only during the isolated VR HUD export. Premultiplied
+  coverage avoids a hard transparency threshold on moving text/line edges.
+  Moving outside the combiner aperture clips the image. Recenter with F12 while seated;
+  optical alignment, readability and comfort still need review in the headset.
 * There are no motion-controller interactions or clickable cockpit switches. Use the existing
   keyboard or gamepad. The original gamepad handling and game rules are unchanged.
 * Tracking loss submits an empty frame; a runtime exit closes the game. Errors are logged.
@@ -205,7 +213,8 @@ python tools/test_vr.py --exe f117port/build-vr/f117-enhanced-vr.exe --game-dir 
 This runs a deterministic real mission on scratch copies of the game, checks identical
 eye poses, physical stereo disparity and head rotation, and compares engine hashes and
 the final pilot roster against a run with VR rendering off. Images/logs are saved under
-`work/vr-check/`. `--vr-selftest` checks pose math without game files or a headset.
+`work/vr-check/`. `--vr-selftest` checks pose/clock math, cockpit clearance and HUD ray mapping
+without game files or a headset.
 Add `--preview-smoke` to exercise the native D3D11 presenter in a hidden test window and save `vr-mirror.png` with
 the GPU-rendered cockpit. The scene check also exercises GPU geometry capture across stereo,
 yaw, pitch and roll, checks exact repeated-pose geometry/palette, and audits engine restoration
@@ -213,7 +222,8 @@ throughout the mission. The integration tool accepts `--resolution 1024`, `2048`
 use 1024 for a faster software reference check.
 
 The HUD coverage check compares the exported transparent layer with the original
-HUD drawn in isolation, including bitmap text and enhanced lines. It rejects
+HUD symbology drawn in isolation, including bitmap text and enhanced lines. The static
+painted glass rim is replaced by physical geometry in VR. The check rejects
 missing/recoloured HUD pixels and any opaque background pixels:
 
 ```powershell
@@ -224,6 +234,13 @@ The run saves `vr-hud-reference.png`, `vr-hud-masked.png` (the exported RGBA lay
 the stereo/cockpit previews, and `vr-canopy-profile-front.png` / `vr-canopy-profile-side.png`.
 The profiles project the actual cockpit mesh orthographically with equal horizontal and
 vertical scale, for comparing window outlines and proportions with the references.
+`vr-cockpit-exterior-front-left.png`, `vr-cockpit-exterior-front.png` and
+`vr-cockpit-exterior-side.png` show the exact cockpit shell from outside on a neutral ground.
+The aircraft fuselage is not included. `vr-panel-source.png` and `vr-cockpit-layout.json`
+record the live image and shared instrument mapping. Validation checks that all coloured
+instrument pixels are retained, rendered HUD bearings stay fixed across both eyes and
+head translation, and bright HUD ink survives the final cockpit render. Isolated optics
+images are saved as `vr-hud-optics-{center,left,right,offset}.png`.
 `--headset --pacing --frames 900 --hud-check`
 also checks actual runtime pacing. The integration check renders the HUD again
 after intervening eye/head poses, verifies pixel equality, and audits state restoration.

@@ -67,6 +67,7 @@ void vr_scene_check(void);
 void vr_capture_desktop(const uint32_t *src, int w, int h, uint32_t *out, int scale);
 bool enh_vr_hud_check(void); /* original HUD drawn over an empty background, including bitmap text */
 bool enh_vr_hud_render(uint32_t *out,int scale); /* 320*scale by 91*scale RGBA, isolated from scenery */
+bool enh_vr_hud_export_active(void); /* the physical combiner replaces the original painted glass rim */
 #ifdef __cplusplus
 }
 #endif

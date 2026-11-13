@@ -9,7 +9,22 @@ enum { CAP=24576 };
 static VrCockpitVertex opaque[CAP],glass[CAP];
 static VrCockpitMesh mesh={opaque,glass,0,0};
 static int built;
-const VrCockpitSurface vr_cockpit_panel={-.575f,-.602f,.575f,-.21f,-.86f};
+const VrCockpitSurface vr_cockpit_panel={-.575f,-.602f,.575f,-.21f,-.88f};
+static VrCockpitInstrument instruments[]={
+    {"countermeasures/status",{0,104,64,200},{0,0,0,0,-.850f}},
+    {"left MFD",{65,104,159,185},{0,0,0,0,-.850f}},
+    {"right MFD",{160,104,255,179},{0,0,0,0,-.850f}},
+    {"landing/status",{256,103,311,132},{0,0,0,0,-.850f}},
+    {"attitude",{257,134,307,177},{0,0,0,0,-.850f}},
+    {"hazard marking",{308,134,320,178},{0,0,0,0,-.850f}},
+    {"engine",{65,186,159,200},{0,0,0,0,-.850f}},
+    {"weapons",{169,181,255,200},{0,0,0,0,-.850f}},
+    {"fuel/thrust",{257,178,320,200},{0,0,0,0,-.850f}},
+    {"mode annunciators",{98,93,223,104},{0,0,0,0,-.850f}},
+};
+static float hud_aperture[VR_HUD_CORNERS][3];
+static float panel_x(float px){return vr_cockpit_panel.x0+px*(vr_cockpit_panel.x1-vr_cockpit_panel.x0)/320;}
+static float panel_y(float py){return vr_cockpit_panel.y1-(py-91)*(vr_cockpit_panel.y1-vr_cockpit_panel.y0)/109;}
 static const C wall={.024f,.030f,.036f,1},edge={.070f,.081f,.090f,1},black={.009f,.012f,.015f,1};
 static const C console={.040f,.048f,.054f,1},metal={.17f,.19f,.20f,1},olive={.10f,.12f,.08f,1};
 static const C yellow={.65f,.43f,.045f,1},green={.05f,.46f,.19f,1},red={.48f,.035f,.018f,1};
@@ -61,16 +76,6 @@ static void window(const P *outer,int count,float inset){
     }
     for(int i=1;i+1<count;i++)pane(inner[0],inner[i],inner[i+1],inner[i+1]);
 }
-static void bezel(float x0,float y0,float x1,float y1){
-    /* Recess decorative frames behind the live art, including their buttons. */
-    const float w=.009f,z=-.880f;
-    box(x0-w,y0-w,z-.025f,x1+w,y0,z,black);box(x0-w,y1,z-.025f,x1+w,y1+w,z,black);
-    box(x0-w,y0,z-.025f,x0,y1,z,edge);box(x1,y0,z-.025f,x1+w,y1,z,edge);
-    for(int i=0;i<5;i++){
-        float x=x0+(i+.5f)*(x1-x0)/5;
-        box(x-.007f,y0-.019f,z-.004f,x+.007f,y0-.010f,z+.006f,console);
-    }
-}
 static void build(void){
     if(built)return;
     built=1;
@@ -84,14 +89,41 @@ static void build(void){
     for(int s=0;s<3;s+=2)for(int i=1;i<5;i++)tri(rings[s][0],rings[s][i],rings[s][i+1],wall,0);
     quad(rings[2][0],rings[2][5],(P){.46f,.43f,.72f},(P){-.46f,.43f,.72f},wall,0);
 
-    /* Dashboard, coaming and a recessed frame around the original live panel. */
-    box(-.64f,-.70f,-1.09f,.64f,-.195f,-.89f,wall);
-    quad((P){-.65f,-.18f,-.88f},(P){.65f,-.18f,-.88f},(P){.57f,-.26f,-1.24f},(P){-.57f,-.26f,-1.24f},black,0);
-    beam((P){-.61f,-.195f,-.866f},(P){.61f,-.195f,-.866f},.025f,edge);
-    beam((P){-.61f,-.65f,-.866f},(P){.61f,-.65f,-.866f},.025f,edge);
-    beam((P){-.61f,-.195f,-.866f},(P){-.61f,-.65f,-.866f},.025f,edge);
-    beam((P){.61f,-.195f,-.866f},(P){.61f,-.65f,-.866f},.025f,edge);
-    bezel(-.309f,-.492f,-.036f,-.278f);bezel(.032f,-.492f,.306f,-.278f);
+    /* One layout drives the live texture UVs and the solid instrument housings.
+     * The original painted coaming is omitted; the real coaming joins the sill. */
+    const float top=panel_y(103),bottom=panel_y(200);
+    box(-.605f,bottom-.018f,-1.10f,.605f,top,-.884f,wall);
+    quad((P){-.61f,top,-.91f},(P){.61f,top,-.91f},(P){.46f,-.17f,-1.82f},(P){-.46f,-.17f,-1.82f},black,0);
+    beam((P){-.61f,top,-.89f},(P){.61f,top,-.89f},.018f,edge);
+    beam((P){-.605f,bottom-.012f,-.89f},(P){.605f,bottom-.012f,-.89f},.018f,edge);
+    for(unsigned i=0;i<sizeof instruments/sizeof *instruments;i++){
+        VrCockpitInstrument *in=&instruments[i];VrCockpitSurface *p=&in->face;
+        p->x0=panel_x(in->source[0]);p->x1=panel_x(in->source[2]);
+        p->y0=panel_y(in->source[3]);p->y1=panel_y(in->source[1]);
+        const float rim=.003f,z=p->z-.003f;
+        box(p->x0,p->y0,-.91f,p->x1,p->y1,z,black);
+        beam((P){p->x0+rim,p->y0+rim,z},(P){p->x1-rim,p->y0+rim,z},.005f,edge);
+        beam((P){p->x0+rim,p->y1-rim,z},(P){p->x1-rim,p->y1-rim,z},.005f,edge);
+        beam((P){p->x0+rim,p->y0+rim,z},(P){p->x0+rim,p->y1-rim,z},.005f,edge);
+        beam((P){p->x1-rim,p->y0+rim,z},(P){p->x1-rim,p->y1-rim,z},.005f,edge);
+    }
+    /* Physical HUD combiner, enlarged around the original six-sided aperture
+     * to retain the readouts from both nominal seated eyes. */
+    const float outline[VR_HUD_CORNERS][2]={{46,91},{46,14},{90,2},{232,2},{275,14},{275,91}};
+    P combiner[VR_HUD_CORNERS];
+    for(int i=0;i<VR_HUD_CORNERS;i++){
+        float x=(outline[i][0]-159)*.62f/256;
+        float y=(52-outline[i][1])*.62f/192;
+        x+=outline[i][0]<159?-.085f:.085f;
+        y+=outline[i][1]>52?-.012f:.035f;
+        combiner[i]=(P){x,y,-.62f};
+        hud_aperture[i][0]=x;hud_aperture[i][1]=y;hud_aperture[i][2]=-.62f;
+    }
+    for(int i=1;i+1<VR_HUD_CORNERS;i++)tri(combiner[0],combiner[i],combiner[i+1],(C){.12f,.21f,.19f,.065f},1);
+    for(int i=0;i+1<VR_HUD_CORNERS;i++)beam(combiner[i],combiner[i+1],.003f,edge);
+    beam(combiner[0],combiner[5],.012f,black);
+    beam(combiner[0],(P){-.40f,top-.005f,-.89f},.012f,edge);
+    beam(combiner[5],(P){.40f,top-.005f,-.89f},.012f,edge);
 
     /* Five flat panes, as in the reference: a near-triangular raked windscreen
      * with a small clipped apex (not a broad horizontal brow),
@@ -177,6 +209,14 @@ static void build(void){
     for(int i=0;i<5;i++)box(-.055f+i*.024f,-.581f,.089f,-.047f+i*.024f,-.559f,.111f,black);
 }
 const VrCockpitMesh *vr_cockpit_mesh(void){build();return &mesh;}
+const VrCockpitInstrument *vr_cockpit_instruments(unsigned *count){build();*count=sizeof instruments/sizeof *instruments;return instruments;}
+const float (*vr_cockpit_hud_aperture(void))[3]{build();return hud_aperture;}
+void vr_cockpit_hud_uv(const float point[3],const double eye[3],float uv[2]){
+    const double depth=eye[2]-point[2];
+    if(depth<=.03){uv[0]=uv[1]=-1;return;}
+    uv[0]=(float)((159+256*(point[0]-eye[0])/depth)/320);
+    uv[1]=(float)((52-192*(point[1]-eye[1])/depth)/91);
+}
 
 /* Test the rendered triangle soup: lower/rear sightlines must hit the enclosure,
  * while forward/side window sightlines remain clear through a glass pane. */
@@ -206,20 +246,34 @@ int vr_cockpit_selftest(void){
             fprintf(stderr,"Cockpit window blocked or unglazed: ray %u\n",i);fail++;
         }
     }
-    for(unsigned e=0;e<3;e++)for(int x=-1;x<=1;x++)for(int y=0;y<3;y++){
-        P target={x*.45f,-.19f+y*.19f,-1},delta=sub(target,eyes[e]);
-        if(ray_hit(opaque,mesh.opaque_count,eyes[e],unit(delta),sqrtf(dot(delta,delta))-.005f)){
-            fprintf(stderr,"Cockpit obscures HUD: eye %u point %d,%d\n",e,x,y);fail++;
+    const float marks[][2]={{159,52},{93,7},{230,7},{53,32},{265,32},{55,65},{265,65},{60,86},{260,86},{159,89}};
+    for(int e=-1;e<=1;e++)for(unsigned i=0;i<sizeof marks/sizeof *marks;i++){
+        P origin={e*.032f,0,0};
+        P target={origin.x+(marks[i][0]-159)*.62f/256,(52-marks[i][1])*.62f/192,-.62f};
+        P delta=sub(target,origin);
+        if(ray_hit(opaque,mesh.opaque_count,origin,unit(delta),sqrtf(dot(delta,delta))-.002f)
+            ||!ray_hit(glass,mesh.glass_count,origin,unit(delta),sqrtf(dot(delta,delta))+.002f)){
+            fprintf(stderr,"Cockpit obscures HUD combiner: eye %d mark %u\n",e,i);fail++;
+        }
+        float uv[2];double eye[3]={origin.x,origin.y,origin.z};
+        float position[3]={target.x,target.y,target.z};
+        vr_cockpit_hud_uv(position,eye,uv);
+        if(fabsf(uv[0]*320-marks[i][0])>.001f||fabsf(uv[1]*91-marks[i][1])>.001f){
+            fprintf(stderr,"HUD bearing changes between eyes: eye %d mark %u\n",e,i);fail++;
         }
     }
     unsigned blocked=0,samples=0;
-    for(unsigned e=0;e<3;e++)for(int x=0;x<=32;x++)for(int y=0;y<=16;y++){
-        const VrCockpitSurface *p=&vr_cockpit_panel;
-        P target={p->x0+(p->x1-p->x0)*x/32,p->y0+(p->y1-p->y0)*y/16,p->z};
-        P delta=sub(target,eyes[e]);samples++;
-        blocked+=ray_hit(opaque,mesh.opaque_count,eyes[e],unit(delta),sqrtf(dot(delta,delta))-.001f);
+    for(unsigned i=0;i<sizeof instruments/sizeof *instruments;i++){
+        unsigned before=blocked;
+        for(unsigned e=0;e<3;e++)for(int x=0;x<=16;x++)for(int y=0;y<=8;y++){
+            const VrCockpitSurface *p=&instruments[i].face;
+            P target={p->x0+(p->x1-p->x0)*x/16,p->y0+(p->y1-p->y0)*y/8,p->z};
+            P delta=sub(target,eyes[e]);samples++;
+            blocked+=ray_hit(opaque,mesh.opaque_count,eyes[e],unit(delta),sqrtf(dot(delta,delta))-.001f);
+        }
+        if(blocked>before)fprintf(stderr,"Instrument %s obscured at %u sample points\n",instruments[i].name,blocked-before);
     }
     if(blocked){fprintf(stderr,"Cockpit obscures live instrument panel: %u / %u sightlines blocked\n",blocked,samples);fail++;}
-    if(!fail)printf("cockpit-selftest OK: %u opaque / %u glass triangles; enclosure, windows, HUD and %u panel sightlines checked\n",mesh.opaque_count/3,mesh.glass_count/3,samples);
+    if(!fail)printf("cockpit-selftest OK: %u opaque / %u glass triangles; enclosure, windows, collimated HUD and %u instrument sightlines checked\n",mesh.opaque_count/3,mesh.glass_count/3,samples);
     return fail?1:0;
 }

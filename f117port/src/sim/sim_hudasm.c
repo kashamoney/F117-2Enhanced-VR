@@ -5,6 +5,7 @@
 
 #include "sim/sim.h"
 #include "sim/sim_priv.h"
+#include "enhanced/vr.h" /* ENH: the VR combiner owns its physical glass rim. */
 
 /* 10A8:0A22 hud_layout_init: the layout block for the HUD style [294B] (1 = compact, else wide); generated from the immediates of the original */
 void hud_layout_init(void)
@@ -289,7 +290,8 @@ void hud_draw_front(void)
 
 frame:                                                   /* ---- the glass frame */
     color_set_r(0xF);
-    if (style == 0) {
+    if (enh_vr_hud_export_active()) color_set_r(8); /* ENH: retain the drawing colour; the 3D glass replaces only this static rim. */
+    else if (style == 0) {
         line(0x2E, 0x5A, 0x2E, 0xE);
         line(0x112, 0x5A, 0x112, 0xE);
         color_set_r(8);

@@ -608,8 +608,11 @@ bool enh_vr_ready(void)
         && prog_current_id() == PROG_VGAME;
 }
 static double vr_alpha;
+static bool vr_hud_export;
+bool enh_vr_hud_export_active(void){return vr_hud_export;}
 static void vr_restore(void)
 {
+    vr_hud_export=false;
     enh_sbx=false;image_load(&img_live);enh_canvas_snap_swap(&cv_scratch);
     if(vr_options.scene_test[0]){
         const u8 *saved=img_live.buf;
@@ -641,7 +644,7 @@ bool enh_vr_hud_render(u32 *out,int scale)
      * driver flag and every engine write below are restored with img_live. */
     bool shadow=enh_shadow_on;enh_shadow_on=false;flip(0);enh_shadow_on=shadow;
     page_select(1);memset(seg_ptr(video_page_seg(1)),0,320*91);
-    hud_overlay_frame();hud_draw_far();
+    vr_hud_export=true;hud_overlay_frame();hud_draw_far();vr_hud_export=false;
     u8 dac[768];u32 pal[256];dac_get(0,256,dac);
     for(int i=0;i<256;i++)pal[i]=((u32)((dac[3*i]<<2)|(dac[3*i]>>4))<<16)
         |((u32)((dac[3*i+1]<<2)|(dac[3*i+1]>>4))<<8)|((dac[3*i+2]<<2)|(dac[3*i+2]>>4));
@@ -669,7 +672,7 @@ bool enh_vr_hud_check(void)
         DSW(0xC07A)=0;DSW(0x365E)=1;DSB(0x294B)=0;DSB(0x4088)=1;
         bool shadow=enh_shadow_on;enh_shadow_on=false;flip(0);enh_shadow_on=shadow;
         page_select(1);memset(seg_ptr(video_page_seg(1)),0,320*91);
-        hud_overlay_frame();hud_draw_far();
+        vr_hud_export=true;hud_overlay_frame();hud_draw_far();vr_hud_export=false;
         u8 dac[768];u32 pal[256];dac_get(0,256,dac);
         for(int i=0;i<256;i++)pal[i]=((u32)((dac[3*i]<<2)|(dac[3*i]>>4))<<16)
             |((u32)((dac[3*i+1]<<2)|(dac[3*i+1]>>4))<<8)|((dac[3*i+2]<<2)|(dac[3*i+2]>>4));
@@ -686,7 +689,7 @@ bool enh_vr_hud_check(void)
         if(s){SDL_SavePNG(s,"vr-hud-reference.png");SDL_DestroySurface(s);}
         s=SDL_CreateSurfaceFrom(w,91*n,SDL_PIXELFORMAT_ARGB8888,masked,w*4);
         if(s){SDL_SavePNG(s,"vr-hud-masked.png");SDL_DestroySurface(s);}
-        fprintf(stderr,"VR HUD coverage: %u / %u original HUD pixels survive (%u missing, %u background pixels leaked)\n",ink-missing,ink,missing,extra);
+        fprintf(stderr,"VR HUD coverage: %u / %u original HUD symbology pixels survive (%u missing, %u background pixels leaked)\n",ink-missing,ink,missing,extra);
         ok=ink>100&&missing==0&&extra==0;
     }
     free(full);free(hud);free(masked);return ok;

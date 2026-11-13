@@ -125,6 +125,8 @@ def main():
                 check_carrier_deck(actual,pose)
             elif agreement < .98:
                 raise RuntimeError('GPU image differs materially from the original software scene')
+        from check_vr_cockpit import check as check_cockpit
+        check_cockpit(directory)
     ms = float(match[1])
     if ms > 1000 / a.hz:
         print(f'FAIL: {ms:.2f} ms exceeds {a.hz:g} Hz budget of {1000/a.hz:.2f} ms')
