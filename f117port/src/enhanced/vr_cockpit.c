@@ -93,11 +93,12 @@ static void build(void){
     beam((P){.61f,-.195f,-.866f},(P){.61f,-.65f,-.866f},.025f,edge);
     bezel(-.309f,-.492f,-.036f,-.278f);bezel(.032f,-.492f,.306f,-.278f);
 
-    /* Five flat panes, as in the reference: one unbroken raked windscreen,
+    /* Five flat panes, as in the reference: a near-triangular raked windscreen
+     * with a small clipped apex (not a broad horizontal brow),
      * two triangular front lights and two swept side panes. Each front light
      * shares its rear edge directly with its side pane: no invented opaque
      * cheek or center windshield divider. Side sills rise to a narrow aft tip. */
-    P fl={-.46f,-.17f,-1.82f},fr={.46f,-.17f,-1.82f},tl={-.26f,.48f,-.72f},tr={.26f,.48f,-.72f};
+    P fl={-.46f,-.17f,-1.82f},fr={.46f,-.17f,-1.82f},tl={-.045f,.48f,-.72f},tr={.045f,.48f,-.72f};
     P sl={-.70f,-.25f,-1.20f},sr={.70f,-.25f,-1.20f};
     P bl={-.68f,-.01f,.52f},br={.68f,-.01f,.52f};
     /* Solve the aft upper corner on the side plane, so each transparency is

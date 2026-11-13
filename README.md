@@ -172,9 +172,9 @@ Implementation and current limits:
 * The original cockpit pictures are reused on an aircraft-fixed instrument panel. The
   enclosed lower hull, footwell, rear bulkhead, faceted glazed canopy, sills, ejection seat/harness,
   side consoles, stick, throttle, pedals and display bezels are cached procedural geometry.
-  The canopy has five flat panes: one unbroken raked windscreen, two triangular
-  front quarter lights and two inward-leaning side windows. The side sills rise toward
-  narrow aft tips, under an opaque faceted roof. Quarter lights share their rear posts
+  The canopy has five flat panes: a near-triangular raked windscreen with a narrow
+  clipped apex, two triangular front quarter lights and two inward-leaning side windows.
+  The side sills rise toward narrow aft tips, under an opaque faceted roof. Quarter lights share their rear posts
   directly with the side windows. Openings are deliberately generous for visibility in VR.
   This is an approximation of the interior; switches remain decorative and original instruments stay live.
   The decorative bezels are recessed and the consoles start beside the pilot to keep the
