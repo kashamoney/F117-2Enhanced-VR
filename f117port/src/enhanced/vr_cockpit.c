@@ -8,6 +8,7 @@ typedef struct { float r,g,b,a; } C;
 enum { CAP=24576 };
 static VrCockpitVertex opaque[CAP],glass[CAP];
 static VrCockpitMesh mesh={opaque,glass,0,0};
+static VrCockpitMesh canopy_mesh,hud_mesh;
 static int built;
 const VrCockpitSurface vr_cockpit_panel={-.575f,-.602f,.575f,-.21f,-.88f};
 static VrCockpitInstrument instruments[]={
@@ -116,6 +117,7 @@ static void build(void){
     }
     /* Physical HUD combiner, enlarged around the original six-sided aperture
      * to retain the readouts from both nominal seated eyes. */
+    const unsigned hudOpaque=mesh.opaque_count,hudGlass=mesh.glass_count;
     const float outline[VR_HUD_CORNERS][2]={{46,91},{46,14},{90,2},{232,2},{275,14},{275,91}};
     P combiner[VR_HUD_CORNERS];
     for(int i=0;i<VR_HUD_CORNERS;i++){
@@ -131,12 +133,14 @@ static void build(void){
     beam(combiner[0],combiner[5],.012f,black);
     beam(combiner[0],(P){-.40f,top-.005f,-.89f},.012f,edge);
     beam(combiner[5],(P){.40f,top-.005f,-.89f},.012f,edge);
+    hud_mesh=(VrCockpitMesh){opaque+hudOpaque,glass+hudGlass,mesh.opaque_count-hudOpaque,mesh.glass_count-hudGlass};
 
     /* Five flat panes, as in the reference: a near-triangular raked windscreen
      * with a small clipped apex (not a broad horizontal brow),
      * two triangular front lights and two swept side panes. Each front light
      * shares its rear edge directly with its side pane: no invented opaque
      * cheek or center windshield divider. Side sills rise to a narrow aft tip. */
+    const unsigned canopyOpaque=mesh.opaque_count,canopyGlass=mesh.glass_count;
     /* Solve the aft upper corner on the side plane, so each transparency is
      * flat rather than a warped polygon assembled from unrelated corners. */
     P normal=cross(sub(tl,sl),sub(bl,sl));
@@ -169,6 +173,7 @@ static void build(void){
     /* Broad sill seals hide the join between glass and lower airframe. */
     beam(fl,sl,.050f,black);beam(fr,sr,.050f,black);beam(sl,bl,.055f,black);beam(sr,br,.055f,black);
     beam(bl,rings[2][0],.055f,black);beam(br,rings[2][5],.055f,black);
+    canopy_mesh=(VrCockpitMesh){opaque+canopyOpaque,glass+canopyGlass,mesh.opaque_count-canopyOpaque,mesh.glass_count-canopyGlass};
 
     for(int side=-1;side<=1;side+=2){
         float x=side<0?-.65f:.42f;
@@ -214,6 +219,8 @@ static void build(void){
     for(int i=0;i<5;i++)box(-.055f+i*.024f,-.581f,.089f,-.047f+i*.024f,-.559f,.111f,black);
 }
 const VrCockpitMesh *vr_cockpit_mesh(void){build();return &mesh;}
+const VrCockpitMesh *vr_cockpit_canopy_mesh(void){build();return &canopy_mesh;}
+const VrCockpitMesh *vr_cockpit_hud_mesh(void){build();return &hud_mesh;}
 const VrCockpitInstrument *vr_cockpit_instruments(unsigned *count){build();*count=sizeof instruments/sizeof *instruments;return instruments;}
 const float (*vr_cockpit_hud_aperture(void))[3]{build();return hud_aperture;}
 void vr_cockpit_hud_uv(const float point[3],const double eye[3],float uv[2]){

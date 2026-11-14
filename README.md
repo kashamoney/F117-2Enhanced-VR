@@ -245,6 +245,19 @@ record the live image and shared instrument mapping. Validation checks that all 
 instrument pixels are retained, rendered HUD bearings stay fixed across both eyes and
 head translation, and bright HUD ink survives the final cockpit render. Isolated optics
 images are saved as `vr-hud-optics-{center,left,right,offset}.png`.
+
+The separate photo-fitted canopy inspection pass is documented in
+[`CANOPY_REVIEW.md`](CANOPY_REVIEW.md), with actual photographs beside front,
+side and front-quarter renders, named landmark errors, and pilot HUD hidden/visible
+comparisons. The benchmark also exports `vr-canopy-geometry.json` and
+`vr-canopy-pilot-{shell-only,hud-hidden,hud-hardware,hud-visible}.png`, with instrument
+textures hidden throughout. Coloured obstruction masks separate canopy, lower interior
+and HUD hardware. These captures use the inspection candidate; normal play retains
+the existing cockpit while its eye position and HUD fit are unresolved.
+`tools/render_canopy_comparison.py` renders the exported C mesh using the stored
+photo cameras in `tools/canopy_fit.json`; it rejects stale geometry. SciPy is needed
+only for authoring a new fit with `tools/fit_vr_canopy.py`.
+
 `--headset --pacing --frames 900 --hud-check`
 also checks actual runtime pacing. The integration check renders the HUD again
 after intervening eye/head poses, verifies pixel equality, and audits state restoration.

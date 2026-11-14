@@ -17,6 +17,7 @@
 #include "enhanced/vr.h"
 #include "enhanced/vr_gpu.h"
 #include "enhanced/vr_cockpit.h"
+#include "enhanced/vr_canopy.h"
 #include <algorithm>
 #include <array>
 #include <cmath>
@@ -472,6 +473,44 @@ public:
         }
         draw(0,f,nullptr);
     }
+    void inspectionMesh(const VrPose &eye,const VrFov &f,const VrCockpitVertex *data,unsigned count,
+                        const std::array<float,4>&colour,bool shade=true) {
+        for(unsigned i=0;i<count;i+=3){
+            const auto *a=data[i].p,*b=data[i+1].p,*c=data[i+2].p;
+            float u[3]={b[0]-a[0],b[1]-a[1],b[2]-a[2]},v[3]={c[0]-a[0],c[1]-a[1],c[2]-a[2]};
+            float n[3]={u[1]*v[2]-u[2]*v[1],u[2]*v[0]-u[0]*v[2],u[0]*v[1]-u[1]*v[0]};
+            float length=std::sqrt(n[0]*n[0]+n[1]*n[1]+n[2]*n[2]);
+            float light=shade&&length>0?.65f+.35f*std::fabs((-.35f*n[0]+.82f*n[1]-.45f*n[2])/length):1;
+            for(unsigned j=i;j<i+3;j++)vertices.push_back(vertex(eye,f,data[j].p[0],data[j].p[1],data[j].p[2],0,0,
+                {colour[0]*light,colour[1]*light,colour[2]*light,colour[3]}));
+        }
+        draw(0,f,nullptr);
+    }
+    void inspectionCockpit(const VrPose &eye,const VrFov &f,int stage,bool ids=false) {
+        vr_matrix(eye.orientation,eyeRotation);
+        const auto *candidate=vr_canopy_mesh(),*full=vr_cockpit_mesh();
+        const auto *old=vr_cockpit_canopy_mesh(),*hardware=vr_cockpit_hud_mesh();
+        inspectionMesh(eye,f,candidate->opaque,candidate->opaque_count,ids?std::array<float,4>{1,0,0,1}:std::array<float,4>{.4f,.42f,.44f,1},!ids);
+        if(stage>0){
+            // The flight mesh retains its textures in normal play. Here all
+            // instrument faces are deliberately plain for obstruction diagnosis.
+            for(unsigned i=0;i<full->opaque_count;i+=3){
+                const auto *v=full->opaque+i;
+                if((v>=old->opaque&&v<old->opaque+old->opaque_count)||
+                   (v>=hardware->opaque&&v<hardware->opaque+hardware->opaque_count))continue;
+                inspectionMesh(eye,f,v,3,ids?std::array<float,4>{0,1,0,1}:std::array<float,4>{.36f,.38f,.40f,1},!ids);
+            }
+        }
+        if(stage>1)inspectionMesh(eye,f,hardware->opaque,hardware->opaque_count,
+            ids?std::array<float,4>{0,0,1,1}:std::array<float,4>{.22f,.24f,.26f,1},!ids);
+        if(ids)return;
+        context->OMSetBlendState(glassBlend.Get(),nullptr,~0u);context->OMSetDepthStencilState(glassDepth.Get(),0);
+        cockpitMesh(eye,f,candidate->glass,candidate->glass_count);
+        if(stage>1)cockpitMesh(eye,f,hardware->glass,hardware->glass_count);
+        context->OMSetBlendState(nullptr,nullptr,~0u);
+        if(stage>2)hudImage(eye,f);
+        context->OMSetDepthStencilState(depthState.Get(),0);
+    }
     void hudImage(const VrPose &eye,const VrFov &f) {
         const std::array<float,4> white={1,1,1,1};
         const auto *aperture=vr_cockpit_hud_aperture();
@@ -566,6 +605,7 @@ public:
         if(surface){SDL_SavePNG(surface,path);SDL_DestroySurface(surface);}return data;
     }
     void dumpCockpitViews(int w,int h) {
+        if(!vr_canopy_export("vr-canopy-geometry.json"))throw std::runtime_error("Cannot export inspection canopy");
         readWorld(panel,"vr-panel-source.png");
         Image inspected;inspected.w=inspected.h=1024;
         D3D11_TEXTURE2D_DESC d{};d.Width=d.Height=1024;d.MipLevels=d.ArraySize=1;
@@ -619,6 +659,24 @@ public:
             context->OMSetDepthStencilState(depthState.Get(),0);context->RSSetState(raster.Get());
             D3D11_VIEWPORT vp{0,0,1024,1024,0,1};context->RSSetViewports(1,&vp);
         };
+        // One frozen world, one eye pose and one FOV for all layer comparisons.
+        // These use the photo-fitted candidate, not the production canopy.
+        VrPose pilot{{0,0,0,1},{0,0,0}};
+        vr_gpu_begin(&geometry[0]);bool inspectionOK=enh_vr_render(&pilot,nullptr,w,h);vr_gpu_end();
+        if(!inspectionOK||geometry[0].invalid)throw std::runtime_error("Canopy layer world capture failed");
+        renderWorld(0,f,1024,1024);
+        const char *layers[]={"shell-only","hud-hidden","hud-hardware","hud-visible"};
+        for(int stage=0;stage<4;stage++){
+            const float clear[4]={0,0,0,1};prepare(clear);
+            fullscreen();draw(gpuWorld?1:3,f,&world[0],std::max(1,vr_canvas_resolution()/1024));
+            inspectionCockpit(pilot,f,stage);
+            char name[96];std::snprintf(name,sizeof name,"vr-canopy-pilot-%s.png",layers[stage]);readWorld(inspected,name);
+        }
+        for(int stage=1;stage<3;stage++){
+            const float clear[4]={0,0,0,1};prepare(clear);
+            inspectionCockpit(pilot,f,stage,true);
+            readWorld(inspected,stage==1?"vr-canopy-mask-hud-hidden.png":"vr-canopy-mask-hud-visible.png");
+        }
         // Exterior comparisons render this exact cached cockpit mesh, not an
         // artist's reconstruction or the original game's whole-aircraft model.
         const double cameras[][3]={{-2.6,1.1,-3.8},{0,.25,-4.5},{-3.8,.25,-.5}};

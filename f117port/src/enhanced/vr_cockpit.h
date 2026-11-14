@@ -5,6 +5,7 @@
 extern "C" {
 #endif
 typedef struct { float p[3], colour[4]; } VrCockpitVertex;
+typedef struct { const char *name; float p[3]; } VrCockpitLandmark;
 typedef struct { float x0,y0,x1,y1,z; } VrCockpitSurface;
 extern const VrCockpitSurface vr_cockpit_panel;
 /* Original 320x200 source rectangles and their matching physical faces. */
@@ -24,6 +25,8 @@ typedef struct {
     unsigned opaque_count, glass_count;
 } VrCockpitMesh;
 const VrCockpitMesh *vr_cockpit_mesh(void);
+const VrCockpitMesh *vr_cockpit_canopy_mesh(void);
+const VrCockpitMesh *vr_cockpit_hud_mesh(void);
 int vr_cockpit_selftest(void);
 #ifdef __cplusplus
 }

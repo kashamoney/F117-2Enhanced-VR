@@ -4,6 +4,7 @@
 #include "enhanced/enh_canvas.h"
 #include "enhanced/vr_gpu.h"
 #include "enhanced/vr_cockpit.h"
+#include "enhanced/vr_canopy.h"
 #include "mem.h"
 #include <math.h>
 #include <stdio.h>
@@ -160,7 +161,7 @@ void vr_capture_desktop(const uint32_t *src,int w,int h,uint32_t *out,int scale)
 }
 int vr_selftest(void)
 {
-    int fail=vr_cockpit_selftest();
+    int fail=vr_cockpit_selftest()+vr_canopy_selftest();
 #define CHECK(c,msg) do { if(!(c)) {fprintf(stderr,"VR FAIL: %s\n",msg);fail++;} } while(0)
     VrPose eye={{0,0,0,1},{0,0,0}};
     /* Replay the real lifecycle: eye -> canonical flip -> old eye again ->

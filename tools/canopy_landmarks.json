@@ -1,0 +1,451 @@
+{
+  "annotation_note": "Manual visible-edge annotations; dogtooth edges use their mean line. Pixel uncertainty is recorded per point. Hidden/cropped points are not scored.",
+  "views": [
+    {
+      "name": "front",
+      "file": "front-usaf.jpg",
+      "crop": [
+        1030,
+        40,
+        2150,
+        880
+      ],
+      "principal": [
+        399.5,
+        909.5
+      ],
+      "yaw": 0.1,
+      "elevation": -0.35,
+      "distance": 8.0,
+      "focal": 3400,
+      "source": "https://commons.wikimedia.org/wiki/File:F-117_Front_View.jpg",
+      "credit": "USAF / SSGT Jason Colbert",
+      "points": {
+        "CROWN": [
+          483,
+          40,
+          3
+        ],
+        "SILL_F_L": [
+          698,
+          667,
+          7
+        ],
+        "SILL_F_R": [
+          315,
+          667,
+          7
+        ],
+        "FG_T_L": [
+          494,
+          224,
+          3
+        ],
+        "FG_T_R": [
+          476,
+          224,
+          3
+        ],
+        "FG_B_L": [
+          600,
+          546,
+          5
+        ],
+        "FG_B_R": [
+          399,
+          548,
+          5
+        ],
+        "QG_L_F": [
+          668,
+          575,
+          6
+        ],
+        "QG_L_B": [
+          806,
+          639,
+          6
+        ],
+        "QG_R_T": [
+          398,
+          253,
+          4
+        ],
+        "QG_R_F": [
+          324,
+          582,
+          6
+        ],
+        "QG_R_B": [
+          201,
+          654,
+          6
+        ],
+        "SG_R_FT": [
+          351,
+          276,
+          6
+        ],
+        "SG_R_AT": [
+          269,
+          288,
+          7
+        ],
+        "SG_R_AB": [
+          78,
+          568,
+          7
+        ],
+        "SG_R_FB": [
+          101,
+          760,
+          6
+        ]
+      },
+      "unscored": "Port quarter upper tip lies in deep shadow; no reliable corner annotation.",
+      "roof_envelope": {
+        "landmarks": [
+          "CROWN",
+          "FACET_APEX",
+          "REAR_CROWN",
+          "SIDE_HEADER_L",
+          "SIDE_HEADER_R",
+          "REAR_SHOULDER_L",
+          "REAR_SHOULDER_R"
+        ],
+        "apex": [
+          483,
+          40
+        ],
+        "left_slope": -0.63,
+        "right_slope": 0.65,
+        "tolerance_px": 3
+      }
+    },
+    {
+      "name": "side",
+      "file": "canopy-side.jpg",
+      "crop": [
+        0,
+        0,
+        902,
+        601
+      ],
+      "principal": [
+        451,
+        300.5
+      ],
+      "yaw": 1.15,
+      "elevation": 0.1,
+      "distance": 4.0,
+      "focal": 1050,
+      "source": "https://i.pinimg.com/originals/65/96/7f/65967f0ced77b1053dbfe35d3f66a9fb.jpg",
+      "credit": "Previously consulted aircraft close-up; photographer not identified",
+      "points": {
+        "CROWN": [
+          426,
+          20,
+          3
+        ],
+        "SILL_F_L": [
+          49,
+          339,
+          7
+        ],
+        "SILL_S_L": [
+          224,
+          472,
+          6
+        ],
+        "SILL_R_L": [
+          794,
+          315,
+          6
+        ],
+        "QG_L_T": [
+          338,
+          122,
+          4
+        ],
+        "QG_L_F": [
+          122,
+          303,
+          5
+        ],
+        "QG_L_B": [
+          214,
+          342,
+          5
+        ],
+        "SG_L_FT": [
+          377,
+          138,
+          4
+        ],
+        "SG_L_FB": [
+          250,
+          386,
+          5
+        ],
+        "SG_L_AT": [
+          592,
+          138,
+          5
+        ],
+        "SG_L_AB": [
+          685,
+          278,
+          7
+        ],
+        "SILL_KNEE_L": [
+          179,
+          440,
+          6
+        ]
+      },
+      "roof_envelope": {
+        "landmarks": [
+          "CROWN",
+          "REAR_CROWN",
+          "SIDE_HEADER_L",
+          "REAR_SHOULDER_L"
+        ],
+        "apex": [
+          426,
+          20
+        ],
+        "left_slope": 0,
+        "right_slope": 0.1786,
+        "tolerance_px": 3
+      }
+    },
+    {
+      "name": "quarter",
+      "file": "3657.jpg",
+      "crop": [
+        0,
+        0,
+        800,
+        600
+      ],
+      "principal": [
+        400,
+        300
+      ],
+      "yaw": 0.55,
+      "elevation": 0.1,
+      "distance": 3.5,
+      "focal": 900,
+      "source": "https://www.b-domke.de/AviationImages/Nighthawk/3657cu.html",
+      "credit": "Burkhard Domke, Berlin SXF 2000; crown outside the source crop",
+      "points": {
+        "SILL_F_L": [
+          536,
+          321,
+          6
+        ],
+        "SILL_F_R": [
+          195,
+          346,
+          6
+        ],
+        "FG_T_L": [
+          546,
+          10,
+          5
+        ],
+        "FG_T_R": [
+          527,
+          13,
+          5
+        ],
+        "FG_B_L": [
+          507,
+          248,
+          5
+        ],
+        "FG_B_R": [
+          315,
+          249,
+          5
+        ],
+        "QG_L_T": [
+          612,
+          33,
+          5
+        ],
+        "QG_L_F": [
+          577,
+          270,
+          5
+        ],
+        "QG_L_B": [
+          705,
+          349,
+          6
+        ],
+        "SG_L_FT": [
+          668,
+          62,
+          6
+        ],
+        "SG_L_FB": [
+          784,
+          434,
+          5
+        ]
+      },
+      "unscored": "Crown is outside the crop; lower side-sill junction is obscured by the dogtooth seal."
+    },
+    {
+      "name": "low-front-check",
+      "file": "front-closeup.jpg",
+      "crop": [
+        0,
+        0,
+        728,
+        488
+      ],
+      "principal": [
+        364,
+        244
+      ],
+      "yaw": -0.35,
+      "elevation": -0.4,
+      "distance": 5.0,
+      "focal": 900,
+      "validation_only": true,
+      "source": "https://imgur.com/gallery/f-117-stealth-plane-front-end-closeup-Rxp5d",
+      "credit": "anthony@maw.bc.ca, 2005",
+      "points": {
+        "CROWN": [
+          368,
+          4,
+          2
+        ],
+        "SILL_F_L": [
+          463,
+          149,
+          4
+        ],
+        "SILL_F_R": [
+          361,
+          141,
+          4
+        ],
+        "FG_T_L": [
+          390,
+          42,
+          3
+        ],
+        "FG_T_R": [
+          379,
+          38,
+          3
+        ],
+        "FG_B_L": [
+          434,
+          109,
+          3
+        ],
+        "FG_B_R": [
+          375,
+          109,
+          3
+        ],
+        "QG_R_T": [
+          354,
+          46,
+          3
+        ],
+        "QG_R_F": [
+          354,
+          122,
+          4
+        ],
+        "QG_R_B": [
+          307,
+          145,
+          4
+        ]
+      }
+    },
+    {
+      "name": "user-side",
+      "file": "user-side.png",
+      "crop": [
+        0,
+        0,
+        335,
+        187
+      ],
+      "principal": [
+        167.5,
+        93.5
+      ],
+      "yaw": 1.2,
+      "elevation": 0.1,
+      "distance": 8,
+      "focal": 600,
+      "source": "User supplied codex-clipboard-FfcLzl.png",
+      "credit": "User-supplied side photograph; original photographer unknown. Native source 335 x 187.",
+      "points": {
+        "CROWN": [
+          167.3,
+          45,
+          1.5
+        ],
+        "QG_L_T": [
+          150,
+          65,
+          2
+        ],
+        "QG_L_F": [
+          111,
+          94,
+          2
+        ],
+        "QG_L_B": [
+          129,
+          103.5,
+          2
+        ],
+        "SG_L_FT": [
+          158,
+          66.3,
+          2
+        ],
+        "SG_L_FB": [
+          135.3,
+          113,
+          2
+        ],
+        "SG_L_AT": [
+          200,
+          68.3,
+          2
+        ],
+        "SG_L_AB": [
+          216,
+          95.3,
+          2
+        ]
+      },
+      "roof_envelope": {
+        "landmarks": [
+          "CROWN",
+          "REAR_CROWN",
+          "SIDE_HEADER_L",
+          "REAR_SHOULDER_L"
+        ],
+        "apex": [
+          167.3,
+          45
+        ],
+        "left_slope": 0,
+        "right_slope": 0.238,
+        "tolerance_px": 1.5
+      }
+    }
+  ]
+}
