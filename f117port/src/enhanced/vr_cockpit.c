@@ -62,8 +62,9 @@ static void beam(P a,P b,float width,C c){
     quad(add(b,p[0]),add(b,p[1]),add(b,p[2]),add(b,p[3]),c,0);
 }
 static void pane(P a,P b,P c,P d){quad(a,b,c,d,(C){.10f,.16f,.17f,.035f},1);}
-/* Inset glazing into a solid faceted surround. Keep the openings larger than
- * the references for VR visibility, while retaining their angular outlines. */
+/* Inset glazing into the painted airframe, with a thin gasket at the glass.
+ * Broad surrounds bring the pane proportions closer to the references while
+ * keeping useful seated visibility and the original canopy headroom. */
 static void window(const P *outer,int count,float inset){
     P center={0,0,0},inner[5];
     for(int i=0;i<count;i++)center=add(center,outer[i]);
@@ -71,8 +72,8 @@ static void window(const P *outer,int count,float inset){
     for(int i=0;i<count;i++)inner[i]=add(outer[i],mul(sub(center,outer[i]),inset));
     for(int i=0;i<count;i++){
         int j=(i+1)%count;
-        quad(outer[i],outer[j],inner[j],inner[i],black,0);
-        beam(inner[i],inner[j],.008f,edge);
+        quad(outer[i],outer[j],inner[j],inner[i],wall,0);
+        beam(inner[i],inner[j],.010f,black);
     }
     for(int i=1;i+1<count;i++)pane(inner[0],inner[i],inner[i+1],inner[i+1]);
 }
@@ -132,20 +133,22 @@ static void build(void){
      * cheek or center windshield divider. Side sills rise to a narrow aft tip. */
     P fl={-.46f,-.17f,-1.82f},fr={.46f,-.17f,-1.82f},tl={-.045f,.48f,-.72f},tr={.045f,.48f,-.72f};
     P sl={-.70f,-.25f,-1.20f},sr={.70f,-.25f,-1.20f};
-    P bl={-.68f,-.01f,.52f},br={.68f,-.01f,.52f};
+    /* Shorten the side panes along the existing swept sill, keeping the level
+     * side horizon comfortably above the thicker lower surround. */
+    P bl={-.682f,-.035f,.34f},br={.682f,-.035f,.34f};
     /* Solve the aft upper corner on the side plane, so each transparency is
      * flat rather than a warped polygon assembled from unrelated corners. */
     P normal=cross(sub(tl,sl),sub(bl,sl));
-    P rl={0,.31f,.08f};
+    P rl={0,.31f,-.04f};
     rl.x=sl.x-(normal.y*(rl.y-sl.y)+normal.z*(rl.z-sl.z))/normal.x;
     P rr={-rl.x,rl.y,rl.z};
     P peak0={0,.58f,-.60f},peak1={0,.53f,.30f},backPeak={0,.47f,.72f};
     P front[4]={fl,fr,tr,tl};
     P leftQuarter[3]={fl,tl,sl},rightQuarter[3]={fr,sr,tr};
     P leftSide[4]={sl,tl,rl,bl},rightSide[4]={sr,br,rr,tr};
-    window(front,4,.055f);
-    window(leftQuarter,3,.075f);window(rightQuarter,3,.075f);
-    window(leftSide,4,.10f);window(rightSide,4,.10f);
+    window(front,4,.13f);
+    window(leftQuarter,3,.18f);window(rightQuarter,3,.18f);
+    window(leftSide,4,.22f);window(rightSide,4,.22f);
     quad(tl,peak0,peak1,rl,wall,0);quad(peak0,tr,rr,peak1,wall,0);
     tri(tl,tr,peak0,wall,0);
     quad(bl,rl,(P){-.46f,.43f,.72f},rings[2][0],wall,0);

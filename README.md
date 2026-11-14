@@ -178,7 +178,8 @@ Implementation and current limits:
   The canopy has five flat panes: a near-triangular raked windscreen with a narrow
   clipped apex, two triangular front quarter lights and two inward-leaning side windows.
   The side sills rise toward narrow aft tips, under an opaque faceted roof. Quarter lights share their rear posts
-  directly with the side windows. Openings are deliberately generous for visibility in VR.
+  directly with the side windows. Broader painted surrounds and shorter side glazing bring
+  the openings closer to the reference proportions while retaining extra visibility for VR.
   This is an approximation of the interior; switches remain decorative and original instruments stay live.
   Instrument housings stay behind their texture faces and the consoles start beside the pilot.
   A mesh ray test checks 4,590 instrument sightlines from three seated eye positions.
