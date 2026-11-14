@@ -1,4 +1,40 @@
-# Canopy geometry pass — 2026-11-13
+# VR canopy review
+
+## Current game: seated cockpit layout — 2026-11-14
+
+The rejected inspection model's main problem was **unconstrained cabin proportions relative to the pilot**, rather than a headset projection fault. The exterior fit did not establish the seat position, cabin depth or usable windshield angles. Moving the eye alone could clear selected sightlines, but native D3D11 comparisons showed enlarged pillars and narrow vertical slits. Increasing the openings on that shell alone also retained the wrong interior proportions.
+
+The normal VR game now uses a five-pane adaptation dimensioned around the existing seated eye and live dashboard. The pointed windscreen, triangular quarter lights, swept sides, lower windshield panel and closed roof remain. The canopy is wider across the forward view, its upper glass is higher, and its coaming/sills share the same landmarks as the lower hull. The seat back ends below eye level, the headrest surrounds the seated head, and rear fittings stay inside the shell. The game-world eye datum, headset field of view, IPD and tracking are unchanged.
+
+**Launch `Carrier-VR.cmd` or `Play-VR.cmd` to see this version in flight.** The original photo-fitted model remains available in the diagnostics as a comparison fixture; its old error table below does not describe the current flight model. The current geometry is a practical F-117-style adaptation with extra visibility, not a measured reconstruction.
+
+![Rejected and revised geometry at the same eye, world and FOV, with HUD and textures hidden](work/canopy-seating/geometry-before-after.png)
+
+![Actual updated cockpit with the HUD assembly hidden and then visible](work/canopy-seating/pilot-hud-toggle.png)
+
+[Current front view](work/canopy-seating/pilot-front.png) · [Left view](work/canopy-seating/pilot-left.png) · [Rear view](work/canopy-seating/pilot-rear.png) · [Exterior](work/canopy-seating/exterior-front-quarter.png) · [Previous normal flight cockpit versus current](work/canopy-seating/production-before-after.png).
+
+The central windshield spans about **6.7° at the level horizon in the rejected model, versus 23.1° now**. Its upper glass edge rises from about 9.8° to 22.7°. In a ±35° horizontal, ±25° vertical angular sample, glazing visible through the shell increases from **28.21% to 44.44%**. These are local model visibility measurements with the canopy alone, not real-aircraft specifications or total flight-view percentages.
+
+The original four fixed view probes failed three directions: 5° left/right of straight ahead, and 20° upward. The current mesh clears all four directions for both nominal eyes, keeps a small helmet envelope inside the shell, and passes the full cockpit's enclosure, HUD and 4,590 instrument sightline checks. Upward/side rays that legitimately meet a window now count as enclosed by glass; direct-up, rear and lower rays must still meet opaque structure.
+
+The [eye-only comparison](work/canopy-seating/viewpoint-only.png) and [eye versus front-depth comparison](work/canopy-seating/viewpoint-versus-shape.png) retain the rejected shell to show why merely changing the viewpoint was insufficient. These are diagnostic experiments, not selectable game settings.
+
+Validation: VR and desktop builds pass with no new compiler warnings; ten focused checks pass in each build. A scripted mission preserves 213 engine hashes and the final roster exactly (`work/vr-check/70cadf486a/`). Native D3D11 validation preserves all 223,776 coloured instrument pixels and 2,806/2,806 checked HUD pixels, with the existing carrier/world checks passing. The current cockpit preview measures 3.072 ms/stereo frame over 30 measured frames, excluding headset wait; this is not a SteamVR comfort/timing measurement. The final images are from `work/vr-benchmark/6dadcacf0f/`. SteamVR stayed closed.
+
+Reproduce the visibility diagnosis against the compiled exports:
+
+```powershell
+# Rejected fixture: fails the forward-view requirement.
+python tools/check_canopy_seating.py --mesh work/vr-benchmark/6dadcacf0f/vr-canopy-geometry.json --check
+# Current flight canopy: passes.
+python tools/check_canopy_seating.py --mesh work/vr-benchmark/6dadcacf0f/vr-canopy-pilot-geometry.json --check
+python tools/render_canopy_seating.py --capture work/vr-benchmark/6dadcacf0f --out work/canopy-seating --previous work/vr-benchmark/86cfd09e11
+```
+
+## Archived photo-fitting pass — 2026-11-13
+
+The remainder records the first inspection pass and its rejected result. The photographs and landmark tables remain useful references; current flight geometry is described above.
 
 The photo-fitted canopy is an **inspection candidate**. It has an opaque grey shell, a distinct lower windshield apron, one clipped triangular windscreen, two triangular quarter windows and two swept side windows. Exterior comparisons contain only the shell and contrasting blue aperture fills. The instrument textures and HUD are absent.
 

@@ -1,7 +1,9 @@
 #include "enhanced/vr_cockpit.h"
+#include "enhanced/vr_canopy.h"
 #include <math.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <string.h>
 
 typedef struct { float x,y,z; } P;
 typedef struct { float r,g,b,a; } C;
@@ -63,30 +65,19 @@ static void beam(P a,P b,float width,C c){
     quad(add(a,p[3]),add(a,p[2]),add(a,p[1]),add(a,p[0]),c,0);
     quad(add(b,p[0]),add(b,p[1]),add(b,p[2]),add(b,p[3]),c,0);
 }
-static void pane(P a,P b,P c,P d){quad(a,b,c,d,(C){.10f,.16f,.17f,.035f},1);}
-/* A modest painted surround and narrow gasket. Pane size comes from the
- * canopy landmarks, rather than filling a large frame with an opaque border. */
-static void window(const P *outer,int count,float inset){
-    P center={0,0,0},inner[5];
-    for(int i=0;i<count;i++)center=add(center,outer[i]);
-    center=mul(center,1.0f/count);
-    for(int i=0;i<count;i++)inner[i]=add(outer[i],mul(sub(center,outer[i]),inset));
-    for(int i=0;i<count;i++){
-        int j=(i+1)%count;
-        quad(outer[i],outer[j],inner[j],inner[i],wall,0);
-        beam(inner[i],inner[j],.008f,black);
-    }
-    for(int i=1;i+1<count;i++)pane(inner[0],inner[i],inner[i+1],inner[i+1]);
+static P canopy_point(const char *name){
+    unsigned count=0;const VrCockpitLandmark *points=vr_canopy_pilot_landmarks(&count);
+    for(unsigned i=0;i<count;i++)if(!strcmp(points[i].name,name))return(P){points[i].p[0],points[i].p[1],points[i].p[2]};
+    abort();
 }
 static void build(void){
     if(built)return;
     built=1;
-    /* Compact the actual glazed shell: lower front header, narrower sill and
-     * shorter fore/aft extent. Keep the pointed five-pane arrangement. */
-    P fl={-.42f,-.15f,-1.68f},fr={.42f,-.15f,-1.68f},tl={-.04f,.36f,-.76f},tr={.04f,.36f,-.76f};
-    P sl={-.62f,-.20f,-1.10f},sr={.62f,-.20f,-1.10f};
-    P bl={-.60f,-.025f,.20f},br={.60f,-.025f,.20f};
-    P aftLeft={-.43f,.30f,.72f},aftRight={.43f,.30f,.72f};
+    /* All joins use the same seated canopy dimensions as the rendered shell. */
+    P fl=canopy_point("SILL_F_L"),fr=canopy_point("SILL_F_R");
+    P sl=canopy_point("SILL_S_L"),sr=canopy_point("SILL_S_R");
+    P bl=canopy_point("SILL_R_L"),br=canopy_point("SILL_R_R");
+    P aftLeft=canopy_point("REAR_SHOULDER_L"),aftRight=canopy_point("REAR_SHOULDER_R");
     /* Continuous lower hull: five faces around the sides/footwell, closed at
      * both ends. The open upper edge meets the canopy sill. */
     const P section[6]={{-.70f,-.26f,0},{-.72f,-.63f,0},{-.46f,-1.02f,0},{.46f,-1.02f,0},{.72f,-.63f,0},{.70f,-.26f,0}};
@@ -135,44 +126,18 @@ static void build(void){
     beam(combiner[5],(P){.40f,top-.005f,-.89f},.012f,edge);
     hud_mesh=(VrCockpitMesh){opaque+hudOpaque,glass+hudGlass,mesh.opaque_count-hudOpaque,mesh.glass_count-hudGlass};
 
-    /* Five flat panes, as in the reference: a near-triangular raked windscreen
-     * with a small clipped apex (not a broad horizontal brow),
-     * two triangular front lights and two swept side panes. Each front light
-     * shares its rear edge directly with its side pane: no invented opaque
-     * cheek or center windshield divider. Side sills rise to a narrow aft tip. */
     const unsigned canopyOpaque=mesh.opaque_count,canopyGlass=mesh.glass_count;
-    /* Solve the aft upper corner on the side plane, so each transparency is
-     * flat rather than a warped polygon assembled from unrelated corners. */
-    P normal=cross(sub(tl,sl),sub(bl,sl));
-    P rl={0,.29f,-.12f};
-    rl.x=sl.x-(normal.y*(rl.y-sl.y)+normal.z*(rl.z-sl.z))/normal.x;
-    P rr={-rl.x,rl.y,rl.z};
-    P peak0={0,.51f,-.64f},peak1={0,.40f,.26f},backPeak={0,.35f,.72f};
-    P front[4]={fl,fr,tr,tl};
-    P leftQuarter[3]={fl,tl,sl},rightQuarter[3]={fr,sr,tr};
-    P leftSide[4]={sl,tl,rl,bl},rightSide[4]={sr,br,rr,tr};
-    window(front,4,.055f);
-    window(leftQuarter,3,.075f);window(rightQuarter,3,.075f);
-    window(leftSide,4,.10f);window(rightSide,4,.10f);
-    quad(tl,peak0,peak1,rl,wall,0);quad(peak0,tr,rr,peak1,wall,0);
-    tri(tl,tr,peak0,wall,0);
-    quad(bl,rl,aftLeft,rings[2][0],wall,0);
-    quad(br,rings[2][5],aftRight,rr,wall,0);
-    quad(rl,peak1,backPeak,aftLeft,black,0);
-    quad(peak1,rr,aftRight,backPeak,black,0);
-    tri(aftLeft,backPeak,aftRight,wall,0);
+    const VrCockpitMesh *shell=vr_canopy_pilot_mesh();
+    if(mesh.opaque_count+shell->opaque_count>CAP||mesh.glass_count+shell->glass_count>CAP)abort();
+    for(unsigned i=0;i<shell->opaque_count;i++)opaque[mesh.opaque_count++]=shell->opaque[i];
+    for(unsigned i=0;i<shell->glass_count;i++)glass[mesh.glass_count++]=shell->glass[i];
+    /* Seal the shared sill into the lower airframe, below the live instruments. */
     quad(fl,fr,rings[0][5],rings[0][0],wall,0);
     quad(fl,sl,rings[1][0],rings[0][0],wall,0);
     quad(fr,rings[0][5],rings[1][5],sr,wall,0);
     quad(sl,bl,rings[2][0],rings[1][0],wall,0);
     quad(sr,rings[1][5],rings[2][5],br,wall,0);
-    const P ends[][2]={{fl,fr},{fl,tl},{fr,tr},{tl,tr},{fl,sl},{fr,sr},{sl,tl},{sr,tr},
-        {sl,bl},{sr,br},{tl,rl},{tr,rr},{bl,rl},{br,rr},{rl,rr},{tl,peak0},{tr,peak0},{rl,peak1},{rr,peak1}};
-    for(unsigned i=0;i<sizeof ends/sizeof *ends;i++)beam(ends[i][0],ends[i][1],.028f,edge);
-    beam(peak0,peak1,.022f,edge);
-    /* Broad sill seals hide the join between glass and lower airframe. */
-    beam(fl,sl,.050f,black);beam(fr,sr,.050f,black);beam(sl,bl,.055f,black);beam(sr,br,.055f,black);
-    beam(bl,rings[2][0],.055f,black);beam(br,rings[2][5],.055f,black);
+    quad(bl,br,rings[2][5],rings[2][0],wall,0);
     canopy_mesh=(VrCockpitMesh){opaque+canopyOpaque,glass+canopyGlass,mesh.opaque_count-canopyOpaque,mesh.glass_count-canopyGlass};
 
     for(int side=-1;side<=1;side+=2){
@@ -199,13 +164,15 @@ static void build(void){
     }
     /* Ejection seat and harness, rear equipment, rudder pedals, stick and throttle. */
     box(-.27f,-.81f,-.06f,.27f,-.685f,.41f,olive);
-    box(-.285f,-.73f,.32f,.285f,.205f,.48f,olive);
-    box(-.18f,.105f,.39f,.18f,.285f,.55f,black);
+    /* Shoulder support stays below eye level; the headrest surrounds the
+     * seated head rather than extending the whole seat back above the eyes. */
+    box(-.285f,-.73f,.32f,.285f,-.16f,.48f,olive);
+    box(-.18f,-.19f,.34f,.18f,.13f,.50f,black);
     for(int side=-1;side<=1;side+=2){
-        beam((P){side*.17f,.16f,.307f},(P){side*.10f,-.59f,.307f},.048f,(C){.20f,.22f,.15f,1});
+        beam((P){side*.17f,-.19f,.307f},(P){side*.10f,-.59f,.307f},.048f,(C){.20f,.22f,.15f,1});
         box(side<0?-.275f:.11f,-.945f,-.99f,side<0?-.11f:.275f,-.90f,-.80f,metal);
         for(int i=0;i<4;i++)box(side<0?-.267f:.118f,-.895f,-.97f+i*.045f,side<0?-.118f:.267f,-.888f,-.961f+i*.045f,black);
-        box(side<0?-.43f:.31f,-.53f,.53f,side<0?-.31f:.43f,.15f,.69f,black);
+        box(side<0?-.39f:.28f,-.53f,.38f,side<0?-.28f:.39f,.02f,.56f,black);
     }
     box(.17f,-.74f,-.52f,.31f,-.68f,-.36f,black);
     beam((P){.24f,-.68f,-.44f},(P){.24f,-.43f,-.42f},.035f,metal);
@@ -247,8 +214,13 @@ int vr_cockpit_selftest(void){
     const P enclosed[]={{0,-1,0},{-1,-.65f,0},{1,-.65f,0},{0,0,1},{0,.4f,1},{0,-.8f,-1},{-.5f,-1,-.5f},{.5f,-1,-.5f},
         {0,1,0},{-.35f,.8f,-.25f},{.35f,.8f,-.25f}};
     const P eyes[]={{0,0,0},{-.10f,0,0},{.10f,0,0}};
-    for(unsigned e=0;e<3;e++)for(unsigned i=0;i<sizeof enclosed/sizeof *enclosed;i++)
-        if(!ray_hit(opaque,mesh.opaque_count,eyes[e],unit(enclosed[i]),2.5f)){fprintf(stderr,"Cockpit enclosure leak: eye %u ray %u\n",e,i);fail++;}
+    for(unsigned e=0;e<3;e++)for(unsigned i=0;i<sizeof enclosed/sizeof *enclosed;i++){
+        P d=unit(enclosed[i]);
+        /* The two upper-forward diagonals can meet the side glass. Direct up,
+         * rear and every lower ray must still meet an opaque enclosure. */
+        if(!ray_hit(opaque,mesh.opaque_count,eyes[e],d,2.5f)&&
+           (i<9||!ray_hit(glass,mesh.glass_count,eyes[e],d,2.5f))){fprintf(stderr,"Cockpit enclosure leak: eye %u ray %u\n",e,i);fail++;}
+    }
     /* The triangular front lights are narrow: aim through their centers,
      * rather than the swept posts shared with the side panes. */
     const P windows[]={{0,.03f,-1},{-.18f,.03f,-1},{.18f,.03f,-1},{-.38f,.016f,-1},{.38f,.016f,-1},{1,.1f,0},{-1,.1f,0}};
@@ -256,6 +228,17 @@ int vr_cockpit_selftest(void){
         P d=unit(windows[i]);
         if(ray_hit(opaque,mesh.opaque_count,(P){0,0,0},d,2.5f)||!ray_hit(glass,mesh.glass_count,(P){0,0,0},d,2.5f)){
             fprintf(stderr,"Cockpit window blocked or unglazed: ray %u\n",i);fail++;
+        }
+    }
+    /* Regression for the photo-fitted interior's pinhole forward view. These
+     * fixed game-visibility directions must pass through the canopy itself
+     * for both eyes, independently of the nearer HUD combiner. */
+    const VrCockpitMesh *skin=vr_canopy_pilot_mesh();
+    const P forward[]={{-.08748866f,0,-1},{0,0,-1},{.08748866f,0,-1},{0,.36397023f,-1}};
+    for(int e=-1;e<=1;e++)for(unsigned i=0;i<sizeof forward/sizeof *forward;i++){
+        P origin={e*.032f,0,0},d=unit(forward[i]);
+        if(ray_hit(opaque,mesh.opaque_count,origin,d,2.5f)||!ray_hit(skin->glass,skin->glass_count,origin,d,2.5f)){
+            fprintf(stderr,"Forward seated view blocked: eye %d direction %u\n",e,i);fail++;
         }
     }
     const float marks[][2]={{159,52},{93,7},{230,7},{53,32},{265,32},{55,65},{265,65},{60,86},{260,86},{159,89}};

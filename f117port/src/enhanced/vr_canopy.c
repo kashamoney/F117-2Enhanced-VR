@@ -10,6 +10,10 @@ static VrCockpitVertex opaque[CAP],glass[CAP];
 static VrCockpitMesh mesh={opaque,glass,0,0};
 static VrCockpitMesh base;
 static int built;
+static VrCockpitVertex pilot_opaque[CAP],pilot_glass[CAP],pilot_base[12];
+static VrCockpitMesh pilot_mesh,pilot_floor;
+static VrCockpitLandmark pilot_points[CAN_POINT_COUNT];
+static int pilot_built;
 static P p(int i){const float *v=canopy_landmarks[i].p;return(P){v[0],v[1],v[2]};}
 static P sub(P a,P b){return(P){a.x-b.x,a.y-b.y,a.z-b.z};}
 static P mul(P a,float s){return(P){a.x*s,a.y*s,a.z*s};}
@@ -60,15 +64,73 @@ static void build(void){
 const VrCockpitMesh *vr_canopy_mesh(void){build();return &mesh;}
 const VrCockpitMesh *vr_canopy_base_mesh(void){build();return &base;}
 const VrCockpitLandmark *vr_canopy_landmarks(unsigned *count){*count=CAN_POINT_COUNT;return canopy_landmarks;}
-int vr_canopy_export(const char *path){
-    build();FILE *file=fopen(path,"w");if(!file)return 0;
+static void pilot_build(void){
+    build();if(pilot_built)return;pilot_built=1;
+    for(int i=0;i<CAN_POINT_COUNT;i++)pilot_points[i]=canopy_landmarks[i];
+    /* The photo bundle does not determine cabin depth, absolute size or the
+     * pilot datum. Anchor a practical five-pane adaptation to the live dash
+     * and a seated eye at (0,0,0), rather than moving the simulation camera. */
+    P a={0,.48f,-.80f},c={0,.52f,-.78f},k={0,.43f,.60f};
+    P f={-.43f,-.20f,-1.65f},s={-.68f,-.26f,-1.00f},r={-.65f,-.16f,.60f},h={-.055f,.45f,-.76f};
+    P n=cross(sub(s,h),sub(r,h)),q={0,.30f,.60f};
+    q.x=h.x-(n.y*(q.y-h.y)+n.z*(q.z-h.z))/n.x;
+    const int center[]={CAN_FACET_APEX,CAN_CROWN,CAN_REAR_CROWN};
+    const P centers[]={a,c,k};
+    for(int i=0;i<3;i++){pilot_points[center[i]].p[0]=centers[i].x;pilot_points[center[i]].p[1]=centers[i].y;pilot_points[center[i]].p[2]=centers[i].z;}
+    const int left[]={CAN_SILL_F_L,CAN_SILL_S_L,CAN_SILL_R_L,CAN_SIDE_HEADER_L,CAN_REAR_SHOULDER_L,CAN_SILL_KNEE_L,
+        CAN_FG_T_L,CAN_FG_B_L,CAN_QG_L_T,CAN_QG_L_F,CAN_QG_L_B,CAN_SG_L_FT,CAN_SG_L_FB,CAN_SG_L_AT,CAN_SG_L_AB};
+    const int right[]={CAN_SILL_F_R,CAN_SILL_S_R,CAN_SILL_R_R,CAN_SIDE_HEADER_R,CAN_REAR_SHOULDER_R,CAN_SILL_KNEE_R,
+        CAN_FG_T_R,CAN_FG_B_R,CAN_QG_R_T,CAN_QG_R_F,CAN_QG_R_B,CAN_SG_R_FT,CAN_SG_R_FB,CAN_SG_R_AT,CAN_SG_R_AB};
+    P values[15]={f,s,r,h,q,{.25f*f.x+.75f*s.x,.25f*f.y+.75f*s.y,.25f*f.z+.75f*s.z},
+        {-.025f,.385f,-.91875f},{-.34f,-.08f,-1.50f}};
+    const float quarter[3][3]={{.90f,.06f,.04f},{.10f,.84f,.06f},{.08f,.10f,.82f}};
+    for(int i=0;i<3;i++)values[8+i]=(P){quarter[i][0]*a.x+quarter[i][1]*f.x+quarter[i][2]*s.x,
+        quarter[i][0]*a.y+quarter[i][1]*f.y+quarter[i][2]*s.y,quarter[i][0]*a.z+quarter[i][1]*f.z+quarter[i][2]*s.z};
+    const float side[4][2]={{.08f,.88f},{.05f,.10f},{.68f,.87f},{.91f,.12f}};
+    for(int i=0;i<4;i++){
+        float u=side[i][0],v=side[i][1];
+        values[11+i]=(P){(1-u)*((1-v)*s.x+v*h.x)+u*((1-v)*r.x+v*q.x),
+            (1-u)*((1-v)*s.y+v*h.y)+u*((1-v)*r.y+v*q.y),
+            (1-u)*((1-v)*s.z+v*h.z)+u*((1-v)*r.z+v*q.z)};
+    }
+    for(int i=0;i<15;i++)for(int mirror=0;mirror<2;mirror++){
+        int index=mirror?right[i]:left[i];
+        pilot_points[index].p[0]=mirror?-values[i].x:values[i].x;
+        pilot_points[index].p[1]=values[i].y;pilot_points[index].p[2]=values[i].z;
+    }
+    pilot_mesh=(VrCockpitMesh){pilot_opaque,pilot_glass,mesh.opaque_count,mesh.glass_count};
+    pilot_floor=(VrCockpitMesh){pilot_base,NULL,base.opaque_count,0};
+    for(int layer=0;layer<3;layer++){
+        const VrCockpitVertex *src=layer==2?base.opaque:layer?glass:opaque;
+        VrCockpitVertex *dst=layer==2?pilot_base:layer?pilot_glass:pilot_opaque;
+        unsigned count=layer==2?base.opaque_count:layer?mesh.glass_count:mesh.opaque_count;
+        for(unsigned i=0;i<count;i++){
+            dst[i]=src[i];int found=0;
+            for(int n=0;n<CAN_POINT_COUNT;n++)if(src[i].p[0]==canopy_landmarks[n].p[0]&&src[i].p[1]==canopy_landmarks[n].p[1]&&src[i].p[2]==canopy_landmarks[n].p[2]){
+                for(int k=0;k<3;k++)dst[i].p[k]=pilot_points[n].p[k];
+                found=1;break;
+            }
+            if(!found)abort();
+        }
+        if(layer==0)for(unsigned i=0;i<count;i+=3){
+            P a={dst[i].p[0],dst[i].p[1],dst[i].p[2]},b={dst[i+1].p[0],dst[i+1].p[1],dst[i+1].p[2]},c={dst[i+2].p[0],dst[i+2].p[1],dst[i+2].p[2]};
+            P normal=cross(sub(b,a),sub(c,a));float length=sqrtf(dot(normal,normal));
+            float shade=.65f+.35f*fabsf(dot(mul(normal,1/length),(P){-.35f,.82f,-.45f}));
+            for(int j=0;j<3;j++){dst[i+j].colour[0]=.026f*shade;dst[i+j].colour[1]=.032f*shade;dst[i+j].colour[2]=.038f*shade;}
+        }
+    }
+}
+const VrCockpitMesh *vr_canopy_pilot_mesh(void){pilot_build();return &pilot_mesh;}
+const VrCockpitLandmark *vr_canopy_pilot_landmarks(unsigned *count){pilot_build();*count=CAN_POINT_COUNT;return pilot_points;}
+static int export_geometry(const char *path,const VrCockpitMesh *surface,const VrCockpitMesh *floor,const VrCockpitLandmark *points){
+    FILE *file=fopen(path,"w");if(!file)return 0;
     fputs("{\"landmarks\":{",file);
-    for(unsigned i=0;i<CAN_POINT_COUNT;i++)fprintf(file,"%s\"%s\":[%.8f,%.8f,%.8f]",i?",":"",canopy_landmarks[i].name,
-        canopy_landmarks[i].p[0],canopy_landmarks[i].p[1],canopy_landmarks[i].p[2]);
+    for(unsigned i=0;i<CAN_POINT_COUNT;i++)fprintf(file,"%s\"%s\":[%.8f,%.8f,%.8f]",i?",":"",points[i].name,
+        points[i].p[0],points[i].p[1],points[i].p[2]);
     fputs("}",file);
     for(int layer=0;layer<3;layer++){
-        const VrCockpitVertex *v=layer==2?base.opaque:layer?mesh.glass:mesh.opaque;
-        unsigned n=layer==2?base.opaque_count:layer?mesh.glass_count:mesh.opaque_count;
+        const VrCockpitVertex *v=layer==2?floor->opaque:layer?surface->glass:surface->opaque;
+        unsigned n=layer==2?floor->opaque_count:layer?surface->glass_count:surface->opaque_count;
         fprintf(file,",\"%s\":[",layer==2?"base":layer?"glass":"opaque");
         for(unsigned i=0;i<n;i+=3){
             fputs(i?",[":"[",file);
@@ -78,18 +140,22 @@ int vr_canopy_export(const char *path){
     }
     fputs("}\n",file);int ok=!ferror(file);return fclose(file)==0&&ok;
 }
+int vr_canopy_export(const char *path){build();return export_geometry(path,&mesh,&base,canopy_landmarks);}
+int vr_canopy_pilot_export(const char *path){pilot_build();return export_geometry(path,&pilot_mesh,&pilot_floor,pilot_points);}
 int vr_canopy_selftest(void){
-    build();int fail=0;
+    pilot_build();int fail=0;
     const int panes[][4]={{CAN_FG_B_L,CAN_FG_B_R,CAN_FG_T_R,CAN_FG_T_L},
         {CAN_QG_L_F,CAN_QG_L_T,CAN_QG_L_B,-1},{CAN_QG_R_F,CAN_QG_R_B,CAN_QG_R_T,-1},
         {CAN_SG_L_FB,CAN_SG_L_FT,CAN_SG_L_AT,CAN_SG_L_AB},{CAN_SG_R_FB,CAN_SG_R_AB,CAN_SG_R_AT,CAN_SG_R_FT}};
-    for(int i=0;i<5;i++){
-        P a=p(panes[i][0]),b=p(panes[i][1]),c=p(panes[i][2]),n=cross(sub(b,a),sub(c,a));
+    for(int variant=0;variant<2;variant++)for(int i=0;i<5;i++){
+        P corners[4]={{0,0,0}};const VrCockpitLandmark *points=variant?pilot_points:canopy_landmarks;
+        for(int j=0;j<4;j++)if(panes[i][j]>=0){const float *v=points[panes[i][j]].p;corners[j]=(P){v[0],v[1],v[2]};}
+        P a=corners[0],b=corners[1],c=corners[2],n=cross(sub(b,a),sub(c,a));
         float area=sqrtf(dot(n,n));
-        if(area<1e-5f){fprintf(stderr,"Canopy pane %d is degenerate\n",i);fail++;}
-        if(panes[i][3]>=0&&fabsf(dot(n,sub(p(panes[i][3]),a)))/area>1e-5f){fprintf(stderr,"Canopy pane %d is not planar\n",i);fail++;}
+        if(area<1e-5f){fprintf(stderr,"Canopy variant %d pane %d is degenerate\n",variant,i);fail++;continue;}
+        if(panes[i][3]>=0&&fabsf(dot(n,sub(corners[3],a)))/area>1e-5f){fprintf(stderr,"Canopy variant %d pane %d is not planar\n",variant,i);fail++;}
     }
     for(unsigned i=0;i<mesh.opaque_count;i++)for(int k=0;k<3;k++)if(!isfinite(opaque[i].p[k]))fail++;
-    if(!fail)printf("canopy-selftest OK: five planar openings, lower apron, %u named landmarks\n",CAN_POINT_COUNT);
+    if(!fail)printf("canopy-selftest OK: reference and seated meshes, five planar openings each, %u named landmarks\n",CAN_POINT_COUNT);
     return fail?1:0;
 }

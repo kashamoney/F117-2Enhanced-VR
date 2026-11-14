@@ -177,10 +177,11 @@ Implementation and current limits:
   side consoles, stick, throttle, pedals and display bezels are cached procedural geometry.
   The canopy has five flat panes: a near-triangular raked windscreen with a narrow
   clipped apex, two triangular front quarter lights and two inward-leaning side windows.
-  The side sills rise toward narrow aft tips, under an opaque faceted roof. Quarter lights share their rear posts
-  directly with the side windows. A lower, narrower and shorter glazed section sits under
-  a hood that slopes down aft. Slim surrounds preserve the window shapes; the compact shell
-  brings the overall proportions closer to the reference while retaining extra visibility for VR.
+  The side sills rise aft under an opaque faceted roof. The windshield and its
+  lower panel are dimensioned around the seated eye and share their sill landmarks
+  with the coaming/lower hull. The photo-fitted inspection shell remains a reference;
+  its unconstrained cabin depth produced an unusably narrow view from inside.
+  The flight model retains the five-pane shape with extra visibility for VR.
   This is an approximation of the interior; switches remain decorative and original instruments stay live.
   Instrument housings stay behind their texture faces and the consoles start beside the pilot.
   A mesh ray test checks 4,590 instrument sightlines from three seated eye positions.
@@ -194,7 +195,7 @@ Implementation and current limits:
   scenery cannot enter it, and display/canonical drawing tags cannot cut holes in it.
   The symbology is collimated through an aircraft-fixed six-sided combiner: each eye samples
   the image from its ray through the glass, preserving the original angular scale without
-  the former one-metre parallax. The glass fits inside the compact canopy at 48 cm from the
+  the former one-metre parallax. The glass sits at 48 cm from the
   recentered eye; its physical size and distance preserve the angular symbol size.
   Glass, rim and support arms are physical geometry; the
   original painted rim is skipped only during the isolated VR HUD export. Premultiplied
@@ -246,14 +247,20 @@ instrument pixels are retained, rendered HUD bearings stay fixed across both eye
 head translation, and bright HUD ink survives the final cockpit render. Isolated optics
 images are saved as `vr-hud-optics-{center,left,right,offset}.png`.
 
-The separate photo-fitted canopy inspection pass is documented in
+The current seated cockpit and archived photo-fitting pass are documented in
 [`CANOPY_REVIEW.md`](CANOPY_REVIEW.md), with actual photographs beside front,
 side and front-quarter renders, named landmark errors, and pilot HUD hidden/visible
-comparisons. The benchmark also exports `vr-canopy-geometry.json` and
+comparisons. Normal `Carrier-VR.cmd` / `Play-VR.cmd` use the seated adaptation.
+The benchmark also exports `vr-canopy-geometry.json` (rejected reference fit),
+`vr-canopy-pilot-geometry.json` (flight canopy), and
 `vr-canopy-pilot-{shell-only,hud-hidden,hud-hardware,hud-visible}.png`, with instrument
 textures hidden throughout. Coloured obstruction masks separate canopy, lower interior
-and HUD hardware. These captures use the inspection candidate; normal play retains
-the existing cockpit while its eye position and HUD fit are unresolved.
+and HUD hardware. `vr-canopy-fitted-*` captures use the seated model, while
+`vr-cockpit-pilot-hud-{hidden,visible}.png` retain the live textures and compare the
+actual game cockpit with the HUD assembly absent/present. Fixed-FOV eye/depth
+experiments are saved as `vr-canopy-seat-*` and `vr-canopy-seat-placements.json`.
+`tools/check_canopy_seating.py` probes the compiled exports; the real cockpit
+self-test requires clear forward/horizon and upward view from both eyes.
 `tools/render_canopy_comparison.py` renders the exported C mesh using the stored
 photo cameras in `tools/canopy_fit.json`; it rejects stale geometry. SciPy is needed
 only for authoring a new fit with `tools/fit_vr_canopy.py`.

@@ -34,6 +34,7 @@ constexpr double pi=3.14159265358979323846;
 void dx(HRESULT r,const char *what) {if(FAILED(r)) {char b[256];std::snprintf(b,sizeof b,"%s (HRESULT %08lx)",what,(unsigned long)r);throw std::runtime_error(b);}}
 void xr(XrResult r,const char *what) {if(XR_FAILED(r)) {char b[256];std::snprintf(b,sizeof b,"%s (OpenXR %d)",what,int(r));throw std::runtime_error(b);}}
 struct V {float p[4],uv[2],color[4];};
+struct CanopyPlacement {const char *name;float y,z,noseScale;};
 struct Constants {float source[4],fov[4],mode[4];};
 struct Image {
     ComPtr<ID3D11Texture2D> texture;
@@ -465,32 +466,44 @@ public:
         V q[]={{{-1,1,0.99999f,1},{0,0},{1,1,1,1}},{{1,1,0.99999f,1},{1,0},{1,1,1,1}},{{1,-1,0.99999f,1},{1,1},{1,1,1,1}},{{-1,-1,0.99999f,1},{0,1},{1,1,1,1}}};
         for(int i:{0,1,2,0,2,3})vertices.push_back(q[i]);
     }
-    void cockpitMesh(const VrPose &eye,const VrFov &f,const VrCockpitVertex *data,unsigned count) {
+    void cockpitMesh(const VrPose &eye,const VrFov &f,const VrCockpitVertex *data,unsigned count,
+                     const VrCockpitVertex *omit=nullptr,unsigned omitCount=0) {
         vertices.reserve(count);
         for(unsigned i=0;i<count;i++) {
+            if(omit&&data+i>=omit&&data+i<omit+omitCount)continue;
             const auto &v=data[i];
             vertices.push_back(vertex(eye,f,v.p[0],v.p[1],v.p[2],0,0,{v.colour[0],v.colour[1],v.colour[2],v.colour[3]}));
         }
         draw(0,f,nullptr);
     }
     void inspectionMesh(const VrPose &eye,const VrFov &f,const VrCockpitVertex *data,unsigned count,
-                        const std::array<float,4>&colour,bool shade=true) {
+                        const std::array<float,4>&colour,bool shade=true,const CanopyPlacement *placement=nullptr) {
         for(unsigned i=0;i<count;i+=3){
-            const auto *a=data[i].p,*b=data[i+1].p,*c=data[i+2].p;
+            float points[3][3];
+            for(int j=0;j<3;j++){
+                std::copy(data[i+j].p,data[i+j].p+3,points[j]);
+                if(placement){
+                    // Compress only the nose ahead of the fitted crown plane;
+                    // rear-seat clearance is a separate constraint.
+                    if(points[j][2]<-.4f)points[j][2]=-.4f+(points[j][2]+.4f)*placement->noseScale;
+                    points[j][1]+=placement->y;points[j][2]+=placement->z;
+                }
+            }
+            const auto *a=points[0],*b=points[1],*c=points[2];
             float u[3]={b[0]-a[0],b[1]-a[1],b[2]-a[2]},v[3]={c[0]-a[0],c[1]-a[1],c[2]-a[2]};
             float n[3]={u[1]*v[2]-u[2]*v[1],u[2]*v[0]-u[0]*v[2],u[0]*v[1]-u[1]*v[0]};
             float length=std::sqrt(n[0]*n[0]+n[1]*n[1]+n[2]*n[2]);
             float light=shade&&length>0?.65f+.35f*std::fabs((-.35f*n[0]+.82f*n[1]-.45f*n[2])/length):1;
-            for(unsigned j=i;j<i+3;j++)vertices.push_back(vertex(eye,f,data[j].p[0],data[j].p[1],data[j].p[2],0,0,
+            for(int j=0;j<3;j++)vertices.push_back(vertex(eye,f,points[j][0],points[j][1],points[j][2],0,0,
                 {colour[0]*light,colour[1]*light,colour[2]*light,colour[3]}));
         }
         draw(0,f,nullptr);
     }
-    void inspectionCockpit(const VrPose &eye,const VrFov &f,int stage,bool ids=false) {
+    void inspectionCockpit(const VrPose &eye,const VrFov &f,int stage,bool ids=false,const CanopyPlacement *placement=nullptr,bool pilotFit=false) {
         vr_matrix(eye.orientation,eyeRotation);
-        const auto *candidate=vr_canopy_mesh(),*full=vr_cockpit_mesh();
+        const auto *candidate=pilotFit?vr_canopy_pilot_mesh():vr_canopy_mesh(),*full=vr_cockpit_mesh();
         const auto *old=vr_cockpit_canopy_mesh(),*hardware=vr_cockpit_hud_mesh();
-        inspectionMesh(eye,f,candidate->opaque,candidate->opaque_count,ids?std::array<float,4>{1,0,0,1}:std::array<float,4>{.4f,.42f,.44f,1},!ids);
+        inspectionMesh(eye,f,candidate->opaque,candidate->opaque_count,ids?std::array<float,4>{1,0,0,1}:std::array<float,4>{.4f,.42f,.44f,1},!ids,placement);
         if(stage>0){
             // The flight mesh retains its textures in normal play. Here all
             // instrument faces are deliberately plain for obstruction diagnosis.
@@ -505,7 +518,7 @@ public:
             ids?std::array<float,4>{0,0,1,1}:std::array<float,4>{.22f,.24f,.26f,1},!ids);
         if(ids)return;
         context->OMSetBlendState(glassBlend.Get(),nullptr,~0u);context->OMSetDepthStencilState(glassDepth.Get(),0);
-        cockpitMesh(eye,f,candidate->glass,candidate->glass_count);
+        inspectionMesh(eye,f,candidate->glass,candidate->glass_count,{.06f,.20f,.28f,.035f},false,placement);
         if(stage>1)cockpitMesh(eye,f,hardware->glass,hardware->glass_count);
         context->OMSetBlendState(nullptr,nullptr,~0u);
         if(stage>2)hudImage(eye,f);
@@ -528,10 +541,11 @@ public:
             context->OMSetBlendState(nullptr,nullptr,~0u);
         }
     }
-    void cockpit(const VrPose &eye,const VrFov &f) {
+    void cockpit(const VrPose &eye,const VrFov &f,bool showHud=true) {
         vr_matrix(eye.orientation,eyeRotation);
         const auto *mesh=vr_cockpit_mesh();
-        cockpitMesh(eye,f,mesh->opaque,mesh->opaque_count);
+        const auto *hardware=vr_cockpit_hud_mesh();
+        cockpitMesh(eye,f,mesh->opaque,mesh->opaque_count,showHud?nullptr:hardware->opaque,hardware->opaque_count);
         const std::array<float,4> white={1,1,1,1};
         unsigned count=0;const auto *instruments=vr_cockpit_instruments(&count);
         for(unsigned i=0;i<count;i++){
@@ -541,9 +555,9 @@ public:
         }
         draw(1,f,&panel);
         context->OMSetBlendState(glassBlend.Get(),nullptr,~0u);context->OMSetDepthStencilState(glassDepth.Get(),0);
-        cockpitMesh(eye,f,mesh->glass,mesh->glass_count);
+        cockpitMesh(eye,f,mesh->glass,mesh->glass_count,showHud?nullptr:hardware->glass,hardware->glass_count);
         context->OMSetBlendState(nullptr,nullptr,~0u);
-        hudImage(eye,f);
+        if(showHud)hudImage(eye,f);
         context->OMSetDepthStencilState(depthState.Get(),0);
     }
     void render(int index,const VrPose &eye,const VrFov &f,ID3D11RenderTargetView *target,ID3D11DepthStencilView *depth,
@@ -606,6 +620,7 @@ public:
     }
     void dumpCockpitViews(int w,int h) {
         if(!vr_canopy_export("vr-canopy-geometry.json"))throw std::runtime_error("Cannot export inspection canopy");
+        if(!vr_canopy_pilot_export("vr-canopy-pilot-geometry.json"))throw std::runtime_error("Cannot export pilot canopy");
         readWorld(panel,"vr-panel-source.png");
         Image inspected;inspected.w=inspected.h=1024;
         D3D11_TEXTURE2D_DESC d{};d.Width=d.Height=1024;d.MipLevels=d.ArraySize=1;
@@ -676,6 +691,35 @@ public:
             const float clear[4]={0,0,0,1};prepare(clear);
             inspectionCockpit(pilot,f,stage,true);
             readWorld(inspected,stage==1?"vr-canopy-mask-hud-hidden.png":"vr-canopy-mask-hud-visible.png");
+        }
+        const CanopyPlacement placements[]={
+            {"baseline",0,0,1},{"lower-eye",.1f,0,1},{"forward-eye",0,.6f,1},
+            {"forward-lower",.1f,.6f,1},{"far-forward-lower",.1f,.8f,1},
+            {"steeper-rake",0,0,.5f},{"steeper-mounted",.08f,.15f,.5f}};
+        if(FILE *file=std::fopen("vr-canopy-seat-placements.json","w")){
+            std::fputs("[",file);
+            for(unsigned i=0;i<sizeof placements/sizeof *placements;i++){
+                const auto &p=placements[i];
+                std::fprintf(file,"%s{\"name\":\"%s\",\"offset\":[0,%.6f,%.6f],\"nose_scale\":%.6f}",i?",":"",p.name,p.y,p.z,p.noseScale);
+            }std::fputs("]\n",file);std::fclose(file);
+        }
+        for(const auto &placement:placements){
+            const float clear[4]={0,0,0,1};prepare(clear);
+            fullscreen();draw(gpuWorld?1:3,f,&world[0],std::max(1,vr_canvas_resolution()/1024));
+            inspectionCockpit(pilot,f,0,false,&placement);
+            char name[96];std::snprintf(name,sizeof name,"vr-canopy-seat-%s.png",placement.name);readWorld(inspected,name);
+        }
+        for(int stage=0;stage<4;stage++){
+            const float clear[4]={0,0,0,1};prepare(clear);
+            fullscreen();draw(gpuWorld?1:3,f,&world[0],std::max(1,vr_canvas_resolution()/1024));
+            inspectionCockpit(pilot,f,stage,false,nullptr,true);
+            char name[96];std::snprintf(name,sizeof name,"vr-canopy-fitted-%s.png",layers[stage]);readWorld(inspected,name);
+        }
+        for(int showHud=0;showHud<2;showHud++){
+            const float clear[4]={0,0,0,1};prepare(clear);
+            fullscreen();draw(gpuWorld?1:3,f,&world[0],std::max(1,vr_canvas_resolution()/1024));
+            cockpit(pilot,f,showHud!=0);
+            readWorld(inspected,showHud?"vr-cockpit-pilot-hud-visible.png":"vr-cockpit-pilot-hud-hidden.png");
         }
         // Exterior comparisons render this exact cached cockpit mesh, not an
         // artist's reconstruction or the original game's whole-aircraft model.
