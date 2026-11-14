@@ -178,8 +178,9 @@ Implementation and current limits:
   The canopy has five flat panes: a near-triangular raked windscreen with a narrow
   clipped apex, two triangular front quarter lights and two inward-leaning side windows.
   The side sills rise toward narrow aft tips, under an opaque faceted roof. Quarter lights share their rear posts
-  directly with the side windows. Broader painted surrounds and shorter side glazing bring
-  the openings closer to the reference proportions while retaining extra visibility for VR.
+  directly with the side windows. A lower, narrower and shorter glazed section sits under
+  a hood that slopes down aft. Slim surrounds preserve the window shapes; the compact shell
+  brings the overall proportions closer to the reference while retaining extra visibility for VR.
   This is an approximation of the interior; switches remain decorative and original instruments stay live.
   Instrument housings stay behind their texture faces and the consoles start beside the pilot.
   A mesh ray test checks 4,590 instrument sightlines from three seated eye positions.
@@ -193,7 +194,9 @@ Implementation and current limits:
   scenery cannot enter it, and display/canonical drawing tags cannot cut holes in it.
   The symbology is collimated through an aircraft-fixed six-sided combiner: each eye samples
   the image from its ray through the glass, preserving the original angular scale without
-  the former one-metre parallax. Glass, rim and support arms are physical geometry; the
+  the former one-metre parallax. The glass fits inside the compact canopy at 48 cm from the
+  recentered eye; its physical size and distance preserve the angular symbol size.
+  Glass, rim and support arms are physical geometry; the
   original painted rim is skipped only during the isolated VR HUD export. Premultiplied
   coverage avoids a hard transparency threshold on moving text/line edges.
   Moving outside the combiner aperture clips the image. Recenter with F12 while seated;
