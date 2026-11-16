@@ -117,9 +117,9 @@ containing Unicorn after the system Python failed to import it.
 Reproduce without starting SteamVR:
 
 ```powershell
-python tools/check_vr_hitches.py --exe f117port/build-vr/f117-enhanced-vr.exe --game-dir ../F117-Enhanced-play/Game --reversals
-python tools/check_vr_visibility.py --exe f117port/build-vr/f117-enhanced-vr.exe --game-dir ../F117-Enhanced-play/Game --draw-distance 8
-python tools/check_vr_presentation.py --exe f117port/build-vr/f117-enhanced-vr.exe --game-dir ../F117-Enhanced-play/Game
+python tools/check_vr_hitches.py --exe f117port/build-vr/f117-enhanced-vr.exe --game-dir ../play/Game --reversals
+python tools/check_vr_visibility.py --exe f117port/build-vr/f117-enhanced-vr.exe --game-dir ../play/Game --draw-distance 8
+python tools/check_vr_presentation.py --exe f117port/build-vr/f117-enhanced-vr.exe --game-dir ../play/Game
 ```
 
 When convenient, review held thrust, aircraft approaching from a distance and

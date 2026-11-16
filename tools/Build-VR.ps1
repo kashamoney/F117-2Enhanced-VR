@@ -9,7 +9,10 @@ if (-not (Test-Path -LiteralPath (Join-Path $binPath 'gcc.exe'))) {
 $env:PATH = $binPath + ';' + $env:PATH
 $buildPath = Join-Path $repoPath $(if ($DesktopOnly) { 'f117port\build-desktop' } else { 'f117port\build-vr' })
 $xrEnabled = if ($DesktopOnly) { 'OFF' } else { 'ON' }
-& cmake -S (Join-Path $repoPath 'f117port') -B $buildPath -G Ninja '-DCMAKE_C_COMPILER=gcc' '-DCMAKE_CXX_COMPILER=g++' '-DCMAKE_BUILD_TYPE=Release' '-DF117_LAUNCHER=OFF' "-DF117_OPENXR=$xrEnabled"
+$testPythonPath = Join-Path (Split-Path -Parent $repoPath) 'tools\python\Scripts\python.exe'
+$pythonArgs = @()
+if (Test-Path -LiteralPath $testPythonPath) { $pythonArgs = @("-DPython3_EXECUTABLE=$testPythonPath") }
+& cmake -S (Join-Path $repoPath 'f117port') -B $buildPath -G Ninja '-DCMAKE_C_COMPILER=gcc' '-DCMAKE_CXX_COMPILER=g++' '-DCMAKE_BUILD_TYPE=Release' '-DF117_LAUNCHER=OFF' "-DF117_OPENXR=$xrEnabled" @pythonArgs
 if ($LASTEXITCODE -ne 0) { throw 'CMake configuration failed.' }
 & cmake --build $buildPath --parallel 12
 if ($LASTEXITCODE -ne 0) { throw 'Compilation failed.' }

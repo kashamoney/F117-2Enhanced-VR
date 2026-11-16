@@ -1,6 +1,6 @@
 # F-117A Enhanced — plan
 
-Built on the faithful port (`../F117-2`, release v0.1.0, commit d05175f). The faithful engine runs unchanged
+Built on the faithful port (`../reference`, release v0.1.0, commit d05175f). The faithful engine runs unchanged
 (`ENGINE.md`); enhancements live in `f117port/src/enhanced/` and hook into the engine at marked `ENH:` points.
 `--classic` turns every enhancement off.
 
@@ -35,6 +35,8 @@ remove it when it is done.
 | U1 (S5.1) | Start the launcher: `& "C:\Coding\F117-2Enhanced\f117port\build\f117-enhanced-launcher.exe"` (Folder: browse to `C:\Coding\F117-2\Game` if it is not found). Check: the window looks like the faithful launcher plus an **Enhanced** box (Render scale Auto / 1..8, Wide view, Smooth distance shading, True night, Classic); hover each control for its tip; Classic greys out the other four; Play starts `f117-enhanced.exe` with the chosen options (try Render scale 4 + True night, then Classic); the choices are still there after closing and reopening; **Frame rate** (S4.5, same visit): Monitor / 60 / 30 / Off; Play with 60 starts the game with `--fps 60` (Task Manager, Details, "Command line" column), Monitor passes no `--fps` (engine default vsync), Classic greys it out | S5.1, S4.5 | 10 min |
 
 ## Status
+
+- **Workspace:** S8.21 done 2026-11-16; this checkout is `source/`, the faithful companion is `../reference/`, and the VR launcher uses `../play/Game`. Build tools and documentation use the reorganized paths.
 
 - **VR targeting HUD and head-aligned points:** S8.20 done 2026-11-16; restores the omitted original target-symbol stage in the isolated HUD, with the normal front-view projection and world/MFD effects excluded. Retarded-bomb testing changes from zero cue pixels to 584 release-bar/702 target-area pixels; free-fall shows 1096/510 at suitable altitude. Distant points had used the engine's vertical sign/compression directly; they now match the GPU world ray convention. Twelve head poses at two distances reduce point/model angular-ray disagreement from 0.541517 to below nine-decimal trace precision. Both builds, ten focused checks, all 213 mission hashes/final roster, existing motion/range checks and GPU/HUD/instrument validation pass. `VR_TARGET_REVIEW.md` records actual HUD renders and red/green evidence. No headset runtime was started; U-VR20.
 
@@ -76,7 +78,7 @@ remove it when it is done.
 
 ## How to run a subtask (user, every time)
 
-1. Code tab → **New session** in `C:\Coding\F117-2Enhanced` (never continue an old session for a new subtask).
+1. Code tab → **New session** in this workspace's `source/` checkout (never continue an old session for a new subtask).
 2. Pick the model from the subtask table; set the effort.
 3. Send exactly: `Do S1.1 from PLAN.md.` (with the subtask id).
 4. When the agent says it is done: glance at the commit, do any U-check it asks for, close the session.
@@ -92,9 +94,9 @@ Model: H = Haiku, S = Sonnet, O = Opus. Status goes in the row's last cell (`don
 | S0.1 | Repo from the faithful port at v0.1.0: engine, build, tests, `src/enhanced/`, `--classic`, PLAN/CLAUDE/ENGINE/README | O | M | done 2026-10-19 |
 
 Notes:
-- Copied from `../F117-2` at d05175f: `f117port/` (minus the launcher; `copy_dlls.cmake` moved to `f117port/cmake/`),
+- Copied from `../reference` at d05175f: `f117port/` (minus the launcher; `copy_dlls.cmake` moved to `f117port/cmake/`),
   `third_party/`, `port/notes/` (the Unicorn harnesses the ctests run), `port/spec/*_symbols.csv` + `port/symbols.csv`,
-  the symbol generators, `make_release.py`, `LICENSE`, `licenses/`. Junctions: `Game` and `work/unpacked` → `../F117-2`.
+  the symbol generators, `make_release.py`, `LICENSE`, `licenses/`. Junctions: `Game` and `work/unpacked` → `../reference`.
 - The executable is `f117-enhanced` (CMake target still `f117`, so the copied tests work unchanged).
 
 ### Phase 1 — Design
@@ -123,7 +125,7 @@ Notes:
   the classic frame scaled N x N. Shadow hooks so far: `put_pixel`, `line`, `poly_fill`, `sprite_scaled`, `flip`, `page_load`, `clear_screen`, `clear_es`; NOT yet:
   `hud_tick_strip` (S3.3), the clear in `r3d_set_viewport` and setting `enh_route` (S2.2). The faithful ctests run with `F117_CLASSIC=1` (set per test in
   CMakeLists). In this repo `video_decoders`, `frontend`, `gen_symbols_current`, `gen_module_headers_current` fail for reasons unrelated to the code (no
-  `port/spec/*.md`, no `picdec`/`panlib` tools here; they look in this repo instead of `../F117-2`); `sound` skips.
+  `port/spec/*.md`, no `picdec`/`panlib` tools here; they look in this repo instead of `../reference`); `sound` skips.
 - S2.2 implements both dither modes (`--dither grid|fine`, Decisions 2026-10-19); S2.3 shows them to the user (U1).
 - S2.2 status: the hr back end `src/enhanced/hr_pass.c`, `hr_clip.c`, `hr_raster.c`, `hr_edge2d.c` (`hr.h`), fed by `ENH:` hooks in `r3d_set_viewport`,
   `r3d_end_scene`, `r3d_project`, `r3d_build_edges`, `r3d_poly_add_edge`, `r3d_poly_finish`, `r3d_line_M`, `fill_M` (shadow), `r3d_draw_sky_ground`, `r3d_project_point`;
@@ -209,7 +211,7 @@ Notes:
 ### Phase 5 — Settings and launcher
 | Id | Task | Model | Size | Status |
 |---|---|---|---|---|
-| S5.1 | Launcher from `../F117-2/f117port/launcher/` (the faithful one: folder, options, key bindings, Game speed) plus Render scale, Frame rate, Smooth distance shading (S3.5: `--smooth-shading` / `--no-smooth-shading`, default off, ignored with `--classic`), True night (S3.6: `--true-night` / `--no-true-night`, default off, ignored with `--classic`) and Classic; built by default, `-DF117_LAUNCHER=OFF` to skip | S | M | done 2026-10-22 · U1 pending |
+| S5.1 | Launcher from `../reference/f117port/launcher/` (the faithful one: folder, options, key bindings, Game speed) plus Render scale, Frame rate, Smooth distance shading (S3.5: `--smooth-shading` / `--no-smooth-shading`, default off, ignored with `--classic`), True night (S3.6: `--true-night` / `--no-true-night`, default off, ignored with `--classic`) and Classic; built by default, `-DF117_LAUNCHER=OFF` to skip | S | M | done 2026-10-22 · U1 pending |
 | S5.2 | Settings: every Enhanced option on the command line and in the launcher; defaults from U3 | H | S | |
 
 ### Phase 6 — Release
@@ -223,7 +225,7 @@ Notes:
 - S6.3 (2026-10-29): `python tools/make_release.py` built a clean Release, ran all 43 ctests (all passed, 3228 s) and wrote `release/F117-Enhanced-v0.2.0-win64.zip` (10.71 MB, 46 files, SHA-256 09059b05a47b...). Game-data check OK. Smoke test from an extracted copy: `--version` = 0.2.0, launcher `--print-command` OK. Versions: `f117port/src/version.h`, `f117port/launcher/version.h`. Released 2026-10-29: tag v0.2.0 pushed, GitHub release with the zip, notes = the CHANGELOG 0.2.0 section.
 - S1.1–S5.2 come from the faithful plan's S6.2 ("native-resolution / widescreen / 60 fps 3D view, longer view
   distance"): resolution, frame rate and the wider view are taken; view distance is parked (TODO below).
-- Bugs in the engine: fix in `../F117-2` first (patch release when it matters), then port here.
+- Bugs in the engine: fix in `../reference` first (patch release when it matters), then port here.
 - 2026-10-19 (S1.1, `DESIGN.md` section 6): the render path changes sim state (designators, tracers, RNG, spinners), so
   every wide or interpolated frame is a sandboxed display pass; that sandbox is now its own foundation S2.4 (S3.4 and
   S4.1 need it). S4.1 shrinks from L to M; S2.3 gains the reference-rasteriser test (Sonnet, M); S3.1 moves to Sonnet
@@ -311,7 +313,7 @@ Several bugs in one message; one session then fixes them in a batch.
 
 ## TODO (parked)
 - [ ] Longer view distance (changes what the original shows; terrain/object tables).
-- [ ] Roland MT-32 (`RSOUND.117`; Munt, user ROMs) — faithful TODO, would be done in `../F117-2` first.
+- [ ] Roland MT-32 (`RSOUND.117`; Munt, user ROMs) — faithful TODO, would be done in `../reference` first.
 
 ## Future mod (not this repo's goal)
 
@@ -352,8 +354,10 @@ Enhanced port (whose rule is: original art and sim unchanged). Recorded 2026-10-
 | S8.18 | Diagnose held-input VR world hitches; extend original model/scenery range to 4x/8x with safe render coordinates and continuous aircraft dot/model handoff | done 2026-11-16 · U-VR18 pending |
 | S8.19 | Replace legacy water speckles, diagnose moving-aircraft jitter, and make distant aircraft silhouettes readable with a gradual minimum-size presentation | done 2026-11-16 · U-VR19 pending |
 | S8.20 | Restore VR target/bombing HUD cues and align distant-point projection with the stereo world under head rotation | done 2026-11-16 · U-VR20 pending |
+| S8.21 | Organize the local workspace into source/reference/game-data/play/tools/docs/archives; repair launch, build and reference-tool paths while preserving Git history and game saves | done 2026-11-16 |
 
 Notes:
+- S8.21 verification: desktop and OpenXR clean rebuilds each pass ten focused ctests; video_decoders, frontend, sound and both generated-header checks pass with the relocated Python/reference tools. Scripted VR mission `work/vr-check/5187209ef8` retains all 213 engine hashes, final roster, repeated-pose pixels and engine-state restoration. SHA-256 records outside the repository verify all 389 files across the original/play/test game copies, plus the manual and both original ZIPs. Previous builds are preserved under `../archives/builds-before-workspace-move/`; `Game` now targets `work/vr-test-game/`.
 - User authorized the VR implementation and new placeholder cockpit geometry in this session. Game rules, original assets and `--classic` remain unchanged.
 - S8.20 diagnosis: the user's tracking MFD had acquired a target, but the VR HUD export called only hud_overlay_frame/hud_draw_far, omitting obj_overlay_frame's S4 target/bomb symbols. A new real-export selected/cleared-target fixture fails with zero bar/target pixels (`work/vr-benchmark/22c75d7408`). The point/head regression `804f53373f` fails at 0.541517 angular-ray disagreement: precise markers retained inverted/compressed engine camera Y while model GPU rays use -Y/(0.75Z). Both are rendering defects; no targeting/control rule change was required.
 - S8.20 implementation: the isolated HUD prepares the ordinary front viewport and camera, calls the original object target-symbol stage, then draws HUD text/marks. Tiny marked hooks skip world effects and MFD-only writes during export; the MFD mode is temporarily neutral for that saved-state pass. Marker projection now shares the model ray sign/aspect convention. New bomb fixtures cover a retarded weapon (Durandal preferred) at 800 ft and a free-fall weapon at 4000 ft; the latter avoids a deliberately hidden low-altitude warning blink. A head-pose trace compares actual marker draw coordinates with model origins through rotation/translation at two distances.

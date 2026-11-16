@@ -2,7 +2,7 @@
 
 The engine in `f117port/src/` is the faithful port's. This file condenses its rules so that Enhanced sessions do
 not need the faithful repo's docs for everyday work. Detail: `f117port/PORTING.md` (copied, searched) and
-`../F117-2/port/spec/*.md` (platform, video, sound, frontend, shell, simflow, render3d, flight, debrief, HANDOFFS;
+`../reference/port/spec/*.md` (platform, video, sound, frontend, shell, simflow, render3d, flight, debrief, HANDOFFS;
 searched, never dumped).
 
 ## Architecture

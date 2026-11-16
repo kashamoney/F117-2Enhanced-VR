@@ -71,7 +71,7 @@ through the Oasis driver such as the Samsung Odyssey+. It is an experimental pro
 headset comfort, scale, and sustained frame timing need testing on the actual headset.
 
 Run **`Play-VR.cmd`** from this repository with SteamVR running and the headset tracking.
-The default game folder is `../F117-Enhanced-play/Game` in this workspace. Original files
+The default game folder is `../play/Game` in this workspace. Original files
 stay separate from the source and the game saves your pilot roster in that working copy.
 Run **`Preview-VR.cmd`** for a desktop stereo preview without a headset.
 The desktop mirror shows the two square eye images side by side.
@@ -268,7 +268,7 @@ Implementation and current limits:
 Offline integration check (no headset required):
 
 ```powershell
-python tools/test_vr.py --exe f117port/build-vr/f117-enhanced-vr.exe --game-dir ../F117-Enhanced-play/Game
+python tools/test_vr.py --exe f117port/build-vr/f117-enhanced-vr.exe --game-dir ../play/Game
 ```
 
 This runs a deterministic real mission on scratch copies of the game, checks identical
@@ -288,7 +288,7 @@ painted glass rim is replaced by physical geometry in VR. The check rejects
 missing/recoloured HUD pixels and any opaque background pixels:
 
 ```powershell
-python tools/benchmark_vr.py --exe f117port/build-vr/f117-enhanced-vr.exe --game-dir ../F117-Enhanced-play/Game --hud-check --validate
+python tools/benchmark_vr.py --exe f117port/build-vr/f117-enhanced-vr.exe --game-dir ../play/Game --hud-check --validate
 ```
 
 The run saves `vr-hud-reference.png`, `vr-hud-masked.png` (the exported RGBA layer),
@@ -329,7 +329,7 @@ A reproducible local performance check uses a hidden D3D11 preview and a disposa
 mission (no pilot changes):
 
 ```powershell
-python tools/benchmark_vr.py --exe f117port/build-vr/f117-enhanced-vr.exe --game-dir ../F117-Enhanced-play/Game
+python tools/benchmark_vr.py --exe f117port/build-vr/f117-enhanced-vr.exe --game-dir ../play/Game
 ```
 
 It measures 30 stereo frames after warmup, including render/upload/GPU completion, against an
@@ -351,7 +351,7 @@ window sightlines, and unobstructed HUD/panel sightlines. Headset comfort and su
 still user checks. To measure the actual runtime with a longer warmup:
 
 ```powershell
-python tools/benchmark_vr.py --exe f117port/build-vr/f117-enhanced-vr.exe --game-dir ../F117-Enhanced-play/Game --headset --frames 900
+python tools/benchmark_vr.py --exe f117port/build-vr/f117-enhanced-vr.exe --game-dir ../play/Game --headset --frames 900
 ```
 
 To capture moving edges, use a deterministic airborne scene with a frozen simulation
@@ -359,7 +359,7 @@ and a 90-degree camera roll. The capture uses the real GPU renderer, with lossle
 world PNGs and diagnostic sky masks under `work/vr-benchmark/<run>/`:
 
 ```powershell
-python tools/benchmark_vr.py --exe f117port/build-vr/f117-enhanced-vr.exe --game-dir ../F117-Enhanced-play/Game --temporal --capture-size 1024 --capture-steps 90
+python tools/benchmark_vr.py --exe f117port/build-vr/f117-enhanced-vr.exe --game-dir ../play/Game --temporal --capture-size 1024 --capture-steps 90
 ```
 
 The check detects discontinuous horizon coverage, stale frames at a repeated pose,
@@ -386,7 +386,7 @@ To audit actual moving-world pacing, including both eye poses and predicted
 display times, use a real-clock mission with the normal frame-stream setting:
 
 ```powershell
-python tools/benchmark_vr.py --exe f117port/build-vr/f117-enhanced-vr.exe --game-dir ../F117-Enhanced-play/Game --headset --pacing --frames 900 --capture-live
+python tools/benchmark_vr.py --exe f117port/build-vr/f117-enhanced-vr.exe --game-dir ../play/Game --headset --pacing --frames 900 --capture-live
 ```
 
 This differs from the frozen roll sweep: the simulation advances in real time,
@@ -419,8 +419,8 @@ select this executable; an already running older build picks up the changes on r
 The full upstream regression suite additionally uses Python `unicorn`, `numpy`, and
 `Pillow`, the faithful companion repository's tools/specs, original files through a
 `Game` junction, and unpacked EXEs in `work/unpacked/`. These are prepared locally in
-this workspace; the test Python is `../.vr-tools/python/Scripts/python.exe` and the
-reference repository is `../.vr-tools/faithful` (also reachable through `../F117-2`).
+this workspace; the test Python is `../tools/python/Scripts/python.exe` and the
+reference repository is `../reference`.
 For this non-default build directory, set `F117_COMM` to the absolute path of
 `f117port/build-vr/shell_ref/ground/comm.bin` after the `shell` test, and `PYTHONPATH`
 to the absolute reference `tools` directory before running the remaining ctests.

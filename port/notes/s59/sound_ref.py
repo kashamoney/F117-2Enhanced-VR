@@ -19,6 +19,7 @@ import os, random, struct, subprocess, sys
 ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..', '..'))
 sys.path.insert(0, os.path.join(ROOT, 'tools', 'sound'))
 sys.path.append(os.path.join(ROOT, '..', 'F117-2', 'tools', 'sound'))   # Enhanced: the driver emulator stays in the faithful repo
+sys.path.append(os.path.join(ROOT, '..', 'reference', 'tools', 'sound'))  # Enhanced: local workspace layout
 
 
 def s16(x):

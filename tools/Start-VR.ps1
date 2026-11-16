@@ -29,7 +29,7 @@ $previousVrCapture = $env:F117_VR_CAPTURE_LIVE
 $repoPath = Split-Path -Parent $PSScriptRoot
 $exePath = Join-Path $repoPath 'f117port\build-vr\f117-enhanced-vr.exe'
 if (-not (Test-Path -LiteralPath $exePath)) { & (Join-Path $PSScriptRoot 'Build-VR.ps1') }
-if (-not $GameDirectory) { $GameDirectory = Join-Path (Split-Path -Parent $repoPath) 'F117-Enhanced-play\Game' }
+if (-not $GameDirectory) { $GameDirectory = Join-Path (Split-Path -Parent $repoPath) 'play\Game' }
 $sessionPath = Join-Path $repoPath 'work\vr-session'
 New-Item -ItemType Directory -Path $sessionPath -Force | Out-Null
 $gameArgs = @('--vr-resolution', $Resolution.ToString(), '--vr-world-scale', $WorldScale.ToString([Globalization.CultureInfo]::InvariantCulture))

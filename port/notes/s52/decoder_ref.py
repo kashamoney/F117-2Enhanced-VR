@@ -12,6 +12,7 @@ import os, struct, subprocess, sys, zlib
 ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..', '..'))
 sys.path.insert(0, os.path.join(ROOT, 'tools'))
 sys.path.append(os.path.join(ROOT, '..', 'F117-2', 'tools'))   # Enhanced: the Phase 2 decoders stay in the faithful repo
+sys.path.append(os.path.join(ROOT, '..', 'reference', 'tools'))  # Enhanced: local workspace layout
 import picdec, panlib  # noqa: E402
 
 

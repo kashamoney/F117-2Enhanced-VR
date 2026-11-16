@@ -128,7 +128,7 @@ The HUD removes **0.75 percentage points** of previously open view; much of its 
 The stored fit in `tools/canopy_fit.json` and generated C header allow normal game builds without SciPy. Local comparison rendering needs NumPy, Pillow and the reference files named in `tools/canopy_landmarks.json` under `work/canopy-reference/`.
 
 ```powershell
-python tools/benchmark_vr.py --exe f117port/build-vr/f117-enhanced-vr.exe --game-dir ../F117-Enhanced-play/Game --validate --hud-check
+python tools/benchmark_vr.py --exe f117port/build-vr/f117-enhanced-vr.exe --game-dir ../play/Game --validate --hud-check
 python tools/render_canopy_comparison.py --fit tools/canopy_fit.json --capture work/vr-benchmark/<capture-id> --references work/canopy-reference --out work/canopy-geometry-pass
 ```
 

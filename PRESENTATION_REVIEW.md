@@ -104,9 +104,9 @@ independent switches `-OriginalDrawDistance`, `-NoWaterDetail`, `-NoShorelines`,
 listed in `README.md`. No headset resolution increase is needed.
 
 ```powershell
-python tools/check_vr_presentation.py --exe f117port/build-vr/f117-enhanced-vr.exe --game-dir ../F117-Enhanced-play/Game
-python tools/test_vr.py --exe f117port/build-vr/f117-enhanced-vr.exe --game-dir ../F117-Enhanced-play/Game --resolution 1024
-python tools/benchmark_vr.py --exe f117port/build-vr/f117-enhanced-vr.exe --game-dir ../F117-Enhanced-play/Game --validate --hud-check
+python tools/check_vr_presentation.py --exe f117port/build-vr/f117-enhanced-vr.exe --game-dir ../play/Game
+python tools/test_vr.py --exe f117port/build-vr/f117-enhanced-vr.exe --game-dir ../play/Game --resolution 1024
+python tools/benchmark_vr.py --exe f117port/build-vr/f117-enhanced-vr.exe --game-dir ../play/Game --validate --hud-check
 ```
 
 Controlled comparisons freeze only benchmark interpolation alpha. Normal play and

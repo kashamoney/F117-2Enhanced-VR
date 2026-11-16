@@ -49,7 +49,10 @@ MSYS2_BIN = Path(os.environ.get("MSYS2_MINGW64_BIN", r"C:\msys64\mingw64\bin"))
 # The ONE original game file that may be packaged (user-approved 2026-10-26): the pilot roster, taken unedited from
 # the faithful repo's backup of 2026-10-14 and staged as roster/ROSTER.FIL. It is accepted only by this exact
 # archive name AND this exact SHA-256; every other game file stays forbidden.
-ROSTER_SRC = ROOT.parent / "F117-2" / "work" / "backup" / "ROSTER.FIL.2026-10-14"
+REFERENCE = ROOT.parent / "reference"
+if not REFERENCE.is_dir():
+    REFERENCE = ROOT.parent / "F117-2"
+ROSTER_SRC = REFERENCE / "work" / "backup" / "ROSTER.FIL.2026-10-14"
 ROSTER_ARC = "roster/ROSTER.FIL"
 ROSTER_SHA256 = "26447d654d6bc5a456767e64849201076462e1e20c0e124887824f2e7bc382b6"
 

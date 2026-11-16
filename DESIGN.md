@@ -3,7 +3,7 @@
 Binding inputs: PLAN.md Goal and Decisions 2026-10-19 (front cockpit: art in place, world extended around it;
 left/right/rear views: whole picture scaled; full-screen 3D and outside views: extended), U3 defaults (render scale =
 largest whole multiple, sim at the faithful 10 steps/s, nearest-neighbour art). Spec references are to
-`../F117-2/port/spec/` (`render3d.md` = R3D, `simflow.md` = SF, `flight.md` = FL); port files are under `f117port/src/`.
+`../reference/port/spec/` (`render3d.md` = R3D, `simflow.md` = SF, `flight.md` = FL); port files are under `f117port/src/`.
 
 ## 0 Decisions in one table
 
