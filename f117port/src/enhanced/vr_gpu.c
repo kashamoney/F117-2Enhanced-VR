@@ -3,6 +3,7 @@
 #include "enhanced/enhanced.h"
 #include "enhanced/vr.h"
 #include "enhanced/vr_presentation.h"
+#include "enhanced/vr_visibility.h"
 #include "render3d/r3d.h"
 #include "mem.h"
 #include <math.h>
@@ -22,10 +23,13 @@ static unsigned surface;
 static void reset_face(void) { memset(depth_plane,0,sizeof depth_plane);memset(band_plane,0,sizeof band_plane);surface=0; }
 bool vr_gpu_active(void) { return current != NULL; }
 void vr_gpu_begin(VrGpuFrame *f) { current=f;f->count=f->batch_count=f->background_count=0;f->polygons=f->invalid=f->spills=f->water_faces=f->surface_faces=0;f->fine=enh.dither_fine;nf=0;memset(&f->presentation,0,sizeof f->presentation);reset_face();
+    f->aircraft_triangles=f->aircraft_dots=0;
     for(int i=0;i<8;i++)for(int j=0;j<2;j++){f->ship_min[i][j]=1e30;f->ship_max[i][j]=-1e30;}
 }
 void vr_gpu_end(void) { current=NULL;nf=0; }
+void vr_gpu_unit_dot(void) { if(current)current->aircraft_dots++; }
 void vr_gpu_palette(const uint32_t *p) {
+    vr_visibility_finish();
     memcpy(current->palette,p,sizeof current->palette);current->spills=vr_presentation_spill_count();
     /* Use the original rendered vessel's bounds, including exaggerated game
      * proportions. Real-world guessed dimensions can put wash inside the hull. */
@@ -52,7 +56,7 @@ void vr_gpu_scene(int heading,int pitch,int roll,const double position[3],double
     cx+=position[0]*unit;cz+=position[2]*unit;
     p->origin[0]=(float)(cx-floor(cx/4096)*4096);p->origin[1]=(float)(cz-floor(cz/4096)*4096);
     p->origin[2]=(float)fmod(time,4096);p->params[0]=(float)vr_presentation_effects();
-    p->params[2]=vr_presentation_range()?2:1;
+    p->params[2]=(float)vr_presentation_factor();
     /* One world sea plane for every LOD and head direction. Deriving it from
      * whichever rounded distant face was visible makes ripples swim on turns. */
     p->sea[0]=(float)m[3];p->sea[1]=(float)m[4];p->sea[2]=(float)m[5];
@@ -94,6 +98,10 @@ static void triangle(P2 a,P2 b,P2 c,uint16_t colour) {
     unsigned ah=colour>>8,op=ah==0xFE?1:ah==0xFD?2:0;
     if(ah==0xFB)return;
     VrGpuFrame *f=current;
+    if(depth_plane[0]!=0||depth_plane[1]!=0||depth_plane[2]!=0) {
+        if(vr_visibility_actor_active())f->aircraft_triangles++;
+        vr_visibility_triangle(fabs((b.x-a.x)*(c.y-a.y)-(b.y-a.y)*(c.x-a.x))*.5);
+    }
     if(f->count+3>f->capacity) {f->capacity=(f->count+3)*2+4096;f->vertices=grow(f->vertices,f->capacity*sizeof *f->vertices);}
     if(!f->batch_count || f->batches[f->batch_count-1].op!=op) {
         if(f->batch_count==f->batch_capacity){f->batch_capacity=f->batch_count*2+64;f->batches=grow(f->batches,f->batch_capacity*sizeof *f->batches);}
@@ -135,6 +143,7 @@ static void polygon(P2 *p,int n,uint16_t colour) {
     triangle(p[ids[0]],p[ids[1]],p[ids[2]],colour);
 }
 void vr_gpu_vertex(unsigned k,double x,double y,double z) {
+    x+=vr_camera_residual(0);y+=vr_camera_residual(1);z+=vr_camera_residual(2);
     if(k<256)points[k]=(P3){x,y,z};
     VrGpuPresentation *p=&current->presentation;
     double scale=.03/vr_near_depth(),cam[3]={x*scale,-y*scale/.75,-z*scale},world[2]={0,0};
@@ -162,6 +171,7 @@ void vr_gpu_add_edge(unsigned rec) {
 }
 void vr_gpu_finish(uint16_t colour) {
     reset_face();
+    if(vr_visibility_actor_active())surface|=VR_SURFACE_AIRCRAFT;
     unsigned count=nf;nf=0;if(count<3)return;
     unsigned ring[65],used[64]={0};
     ring[0]=links[face[0]][0];ring[1]=links[face[0]][1];used[0]=1;
@@ -234,6 +244,7 @@ void vr_gpu_poly2d(int n,const int64_t *p,uint8_t colour) {
     current->background_count=current->count;
 }
 void vr_gpu_rect(double x0,double y0,double x1,double y1,uint8_t colour) {
+    if(vr_visibility_actor_active())surface|=VR_SURFACE_AIRCRAFT;
     if(colour==0xF||colour==0xE||colour==0x1F)surface|=VR_SURFACE_LIGHT;
     P2 q[4]={screen(x0,y0),screen(x1,y0),screen(x1,y1),screen(x0,y1)};
     triangle(q[0],q[1],q[2],0xFF00|colour);triangle(q[0],q[2],q[3],0xFF00|colour);
@@ -256,6 +267,7 @@ void vr_gpu_line(unsigned rec,uint16_t colour) {
     if(a.z<near&&b.z<near)return;
     if(a.z<near){double t=(near-a.z)/(b.z-a.z);a=(P3){a.x+t*(b.x-a.x),a.y+t*(b.y-a.y),near};}
     if(b.z<near){double t=(near-b.z)/(a.z-b.z);b=(P3){b.x+t*(a.x-b.x),b.y+t*(a.y-b.y),near};}
+    if(vr_visibility_actor_active())surface|=VR_SURFACE_AIRCRAFT;
     if(hr_light_element()||((colour&255)>=0x90&&(colour&255)<=0x97))surface|=VR_SURFACE_LIGHT;
     depth_plane[2]=2/(a.z+b.z)/(.03/near);
     band_plane[2]=(8+log2((512000.0/1048576)*2*vr_options.world_scale/(.03/near)))/15;

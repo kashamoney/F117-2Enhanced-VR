@@ -9,6 +9,7 @@ extern "C" {
 #endif
 typedef struct { float x, y; uint32_t colour; float inv_depth, band; uint32_t flags; } VrGpuVertex;
 enum { VR_SURFACE_WATER=0x100, VR_SURFACE_GROUND=0x200, VR_SURFACE_SKY=0x400, VR_SURFACE_LIGHT=0x800 };
+#define VR_SURFACE_AIRCRAFT 0x80000000u /* sign of otherwise positive half-depth */
 /* Kept in float4 rows for the matching D3D constant buffer. Metres, not model units. */
 typedef struct {
     float view[3][4], origin[4], sea[4], ships[8][4], shipshape[8][4], params[4];
@@ -24,6 +25,7 @@ typedef struct {
     bool fine;
     VrGpuPresentation presentation;
     unsigned spills, water_faces, surface_faces;
+    unsigned aircraft_triangles,aircraft_dots;
     uint32_t source_camera[8]; /* raw coordinate evidence for diagnostic captures */
     double ship_min[8][2],ship_max[8][2];
 } VrGpuFrame;
@@ -32,6 +34,7 @@ void vr_gpu_begin(VrGpuFrame *frame);
 void vr_gpu_end(void);
 void vr_gpu_palette(const uint32_t *palette);
 void vr_gpu_scene(int heading,int pitch,int roll,const double position[3],double time);
+void vr_gpu_unit_dot(void);
 void vr_gpu_free(VrGpuFrame *frame);
 void vr_gpu_vertex(unsigned k, double x, double y, double z);
 void vr_gpu_edge(unsigned rec, unsigned a, unsigned b);

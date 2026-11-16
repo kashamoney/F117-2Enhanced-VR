@@ -46,7 +46,7 @@ def main():
 
     enabled = run('enabled', '--hud-check')
     meta = [json.loads((enabled/f'vr-presentation-{k}.json').read_text()) for k in range(11)]
-    assert all(m['effects'] == 31 and m['distance'] == 2 for m in meta)
+    assert all(m['effects'] == 31 and m['distance'] == 8 for m in meta)
     assert max(m['water_faces'] for m in meta) > 0 and max(m['ships'] for m in meta) > 0
     # Head rotation must not choose a different rounded terrain LOD sea plane.
     assert max(m['sea'][3] for m in meta[:10])-min(m['sea'][3] for m in meta[:10]) < 1e-4

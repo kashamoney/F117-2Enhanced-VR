@@ -115,7 +115,7 @@ public:
     WorldTarget worldTarget[2];
     VrGpuFrame geometry[2]{};
     ComPtr<ID3D11VertexShader> worldVS;
-    ComPtr<ID3D11PixelShader> worldPS,lookupPS,inspectPS;
+    ComPtr<ID3D11PixelShader> worldPS,lookupPS,inspectPS,actorPS;
     ComPtr<ID3D11InputLayout> worldLayout;
     ComPtr<ID3D11Buffer> worldVB,presentationCB;
     DXGI_FORMAT worldFormat=vr_options.presentation?DXGI_FORMAT_R32_UINT:DXGI_FORMAT_R8_UINT;
@@ -134,6 +134,9 @@ public:
     unsigned frames=0;
     double frameMS=0;
     bool benchmark=SDL_getenv("F117_VR_BENCHMARK")!=nullptr;
+    Uint64 testDeadline=0,inputStarted=0;
+    Uint64 nextService=0,displayPeriod=SDL_NS_PER_SECOND/90;
+    unsigned inputEvents=0;
     unsigned benchFrames=0;
     unsigned benchTarget=SDL_getenv("F117_VR_BENCH_FRAMES")?std::clamp(SDL_atoi(SDL_getenv("F117_VR_BENCH_FRAMES")),1,900):30;
     unsigned benchWarmup=SDL_getenv("F117_VR_BENCH_WARMUP")?std::clamp(SDL_atoi(SDL_getenv("F117_VR_BENCH_WARMUP")),0,900):5;
@@ -275,6 +278,8 @@ public:
         dx(device->CreatePixelShader(l->GetBufferPointer(),l->GetBufferSize(),nullptr,&lookupPS),"palette PS");
         compile("Inspect","ps_5_0",l);
         dx(device->CreatePixelShader(l->GetBufferPointer(),l->GetBufferSize(),nullptr,&inspectPS),"surface inspection PS");
+        compile("InspectActor","ps_5_0",l);
+        dx(device->CreatePixelShader(l->GetBufferPointer(),l->GetBufferSize(),nullptr,&actorPS),"actor coverage PS");
         D3D11_INPUT_ELEMENT_DESC in[]={
             {"POSITION",0,DXGI_FORMAT_R32G32_FLOAT,0,0,D3D11_INPUT_PER_VERTEX_DATA,0},
             {"COLOR",0,DXGI_FORMAT_R32_UINT,0,8,D3D11_INPUT_PER_VERTEX_DATA,0},
@@ -285,7 +290,7 @@ public:
         D3D11_BUFFER_DESC bd{};bd.ByteWidth=sizeof(VrGpuPresentation);bd.Usage=D3D11_USAGE_DYNAMIC;bd.BindFlags=D3D11_BIND_CONSTANT_BUFFER;bd.CPUAccessFlags=D3D11_CPU_ACCESS_WRITE;
         dx(device->CreateBuffer(&bd,nullptr,&presentationCB),"presentation constants");
     }
-    void renderWorld(int index,const VrFov &f,int w,int h,bool backgroundOnly=false,bool inspect=false) {
+    void renderWorld(int index,const VrFov &f,int w,int h,bool backgroundOnly=false,unsigned inspection=0) {
         auto &t=worldTarget[index];auto &image=world[index];auto &g=geometry[index];
         if(t.w!=w||t.h!=h) {
             t=WorldTarget{};image=Image{};
@@ -325,7 +330,9 @@ public:
         context->IASetInputLayout(worldLayout.Get());context->IASetPrimitiveTopology(D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
         context->VSSetShader(worldVS.Get(),nullptr,0);context->PSSetShader(worldPS.Get(),nullptr,0);
         if(backgroundOnly){context->OMSetBlendState(logic[0].Get(),nullptr,~0u);context->Draw(UINT(g.background_count),0);}
-        else for(size_t i=0;i<g.batch_count;i++){auto &b=g.batches[i];context->OMSetBlendState(logic[b.op].Get(),nullptr,~0u);context->Draw(b.count,b.first);}
+        else for(size_t i=0;i<g.batch_count;i++){auto &b=g.batches[i];context->OMSetBlendState(logic[b.op].Get(),nullptr,~0u);
+            if(inspection==3){for(unsigned j=0;j<b.count;j+=3)if(g.vertices[b.first+j].flags&VR_SURFACE_AIRCRAFT)context->Draw(3,b.first+j);}
+            else context->Draw(b.count,b.first);}
         context->OMSetBlendState(nullptr,nullptr,~0u);
         for(auto &colour:g.palette)colour|=0xFF000000;
         upload(gpuPalette,g.palette,256,1);
@@ -336,7 +343,7 @@ public:
         dx(context->Map(cb.Get(),0,D3D11_MAP_WRITE_DISCARD,0,&mapped),"lookup constants");
         std::memcpy(mapped.pData,&c,sizeof c);context->Unmap(cb.Get(),0);
         ID3D11ShaderResourceView *views[3]={samples>1?t.srv.Get():nullptr,gpuPalette.srv.Get(),samples==1?t.srv.Get():nullptr};
-        context->PSSetShaderResources(0,3,views);context->PSSetShader(inspect?inspectPS.Get():lookupPS.Get(),nullptr,0);context->Draw(6,0);
+        context->PSSetShaderResources(0,3,views);context->PSSetShader(inspection>=2?actorPS.Get():inspection?inspectPS.Get():lookupPS.Get(),nullptr,0);context->Draw(6,0);
         ID3D11ShaderResourceView *none[3]={nullptr,nullptr,nullptr};context->PSSetShaderResources(0,3,none);
         rt=nullptr;context->OMSetRenderTargets(1,&rt,nullptr);
     }
@@ -392,7 +399,7 @@ public:
             timing=std::fopen("vr-timing.csv","w");
             if(!timing)throw std::runtime_error("Cannot open vr-timing.csv");
             std::setvbuf(timing,nullptr,_IOFBF,65536);
-            std::fprintf(timing,"submission,eye,display_time,clock_ns,frame,alpha,x,y,heading,pitch,roll,capture\n");
+            std::fprintf(timing,"submission,eye,display_time,clock_ns,frame,alpha,x,y,heading,pitch,roll,capture,throttle,thrust,work_ms,panel_ms,hud_ms,geometry_ms\n");
         }
         char b[160];std::snprintf(b,sizeof b,"%s ready; %s world; F12 recenter, F11 cockpit",preview?"Desktop stereo preview":"OpenXR",gpuWorld?"GPU geometry at eye resolution":"software fallback");note(b);
         if(preview&&gpuWorld){std::snprintf(b,sizeof b,"Preview world target: %dx%d, %ux MSAA",vr_options.resolution?vr_options.resolution:1920,vr_options.resolution?vr_options.resolution:1920,samples);note(b);}
@@ -826,6 +833,36 @@ public:
     }
     void dumpGpuEyes(const std::array<VrPose,2> &poses,const std::array<VrFov,2> &fovs,int w,int h) {
         if(!vr_options.dump||dumped||!vr_scene_initialized())return;
+        if(SDL_getenv("F117_VR_VISIBILITY_TEST")) {
+            FILE *file=std::fopen("vr-visibility.csv","w");if(!file)throw std::runtime_error("Visibility trace file");
+            std::fprintf(file,"distance_units,metres,model_triangles,dots,invalid,rendered_pixels,isolated_pixels,tagged_vertices,in_view_vertices\n");
+            VrPose pose{{0,0,0,1},{0,0,0}};
+            for(int d=256;d<=131072;d+=256) {
+                vr_presentation_test_aircraft(d);
+                vr_gpu_begin(&geometry[0]);bool ok=enh_vr_render(&pose,nullptr,w,h);vr_gpu_end();
+                if(!ok){std::fclose(file);throw std::runtime_error("Visibility scene render");}
+                const auto &g=geometry[0];
+                int coverage=-1,isolated=-1;
+                if(d==4096||d==12288||d==16384||d==24576||d==49152||d==65536||d==131072) {
+                    int ew=preview?(vr_options.resolution?vr_options.resolution:1920):swaps[0].w;
+                    int eh=preview?ew:swaps[0].h;
+                    renderWorld(0,fovs[0],ew,eh,false,2);auto pixels=readWorld(world[0],nullptr);
+                    coverage=int(std::count_if(pixels.begin(),pixels.end(),[](uint32_t p){return (p&0xFFFFFF)!=0;}));
+                    renderWorld(0,fovs[0],ew,eh,false,3);pixels=readWorld(world[0],nullptr);
+                    isolated=int(std::count_if(pixels.begin(),pixels.end(),[](uint32_t p){return (p&0xFFFFFF)!=0;}));
+                    char name[96];std::snprintf(name,sizeof name,"vr-aircraft-%d.png",d);
+                    renderWorld(0,fovs[0],ew,eh);readWorld(world[0],name);
+                }
+                unsigned tagged=0,inview=0;for(size_t k=0;k<g.count;k++)if(g.vertices[k].flags&VR_SURFACE_AIRCRAFT){tagged++;if(std::abs(g.vertices[k].x)<1&&std::abs(g.vertices[k].y)<1)inview++;}
+                std::fprintf(file,"%d,%.3f,%u,%u,%u,%d,%d,%u,%u\n",d,d*.5*(512000.0/1048576)*vr_options.world_scale,g.aircraft_triangles,g.aircraft_dots,g.invalid,coverage,isolated,tagged,inview);
+            }
+            std::fclose(file);vr_presentation_test_aircraft(0);
+            vr_gpu_begin(&geometry[0]);bool restored=enh_vr_render(&poses[0],nullptr,w,h);vr_gpu_end();
+            if(!restored)throw std::runtime_error("Restore after visibility sweep");
+            int ew=preview?(vr_options.resolution?vr_options.resolution:1920):swaps[0].w;
+            renderWorld(0,fovs[0],ew,preview?ew:swaps[0].h);dumped=true;
+            note("Wrote continuous aircraft distance/representation sweep");return;
+        }
         if(SDL_getenv("F117_VR_HUD_CHECK")&&!enh_vr_hud_check())throw std::runtime_error("VR HUD export discarded original symbols");
         VrSceneInfo info;vr_scene_info(&info);
         if(FILE *file=std::fopen("vr-scene.json","w")) {
@@ -911,18 +948,31 @@ public:
         panelDirty|=changed;
         if(in_tick || exit || !desktop)return;
         if(benchmark&&!enh_vr_ready())return;
+        if(!preview){poll();if(!running)return;}
         const Uint64 now=SDL_GetTicksNS();
+        // Keyboard peeks also pump the host. Do not turn every peek into a
+        // blocking headset wait: leave time for simulation/input work between
+        // actual display frames. panelDirty above retains pending updates.
+        bool paced=!preview||(benchmark&&SDL_getenv("F117_VR_TEST_HZ"));
+        if(paced&&nextService&&now<nextService)return;
         if(preview && !benchmark && lastFrame && now-lastFrame<SDL_NS_PER_SECOND/60)return;
         in_tick=true;
         struct Guard {bool &b;~Guard(){b=false;}} guard{in_tick};
-        if(!preview){poll();if(!running)return;}
         const Uint64 started=SDL_GetTicksNS();
         uploadBytes=0;
         XrFrameState frame{XR_TYPE_FRAME_STATE};bool begun=false;
         if(!preview) {
             XrFrameWaitInfo wait{XR_TYPE_FRAME_WAIT_INFO};xr(xrWaitFrame(session,&wait,&frame),"wait VR frame");
             XrFrameBeginInfo begin{XR_TYPE_FRAME_BEGIN_INFO};xr(xrBeginFrame(session,&begin),"begin VR frame");begun=true;
+            if(frame.predictedDisplayPeriod>0)displayPeriod=Uint64(frame.predictedDisplayPeriod);
         }
+        if(preview&&benchmark&&SDL_getenv("F117_VR_TEST_HZ")) {
+            Uint64 now=SDL_GetTicksNS();
+            if(testDeadline>now)SDL_DelayNS(testDeadline-now);
+            double hz=std::clamp(SDL_atof(SDL_getenv("F117_VR_TEST_HZ")),30.0,144.0);
+            displayPeriod=Uint64(SDL_NS_PER_SECOND/hz);testDeadline=SDL_GetTicksNS()+displayPeriod;
+        }
+        if(paced)nextService=SDL_GetTicksNS()+displayPeriod-std::min(Uint64(2*SDL_NS_PER_MS),displayPeriod/4);
         // Ensure a begun frame is always ended, including errors and tracking loss.
         struct EndGuard {Backend *b;bool &active;XrTime t;~EndGuard(){if(active){XrFrameEndInfo e{XR_TYPE_FRAME_END_INFO};e.displayTime=t;e.environmentBlendMode=XR_ENVIRONMENT_BLEND_MODE_OPAQUE;xrEndFrame(b->session,&e);}}} end{this,begun,frame.predictedDisplayTime};
         std::array<VrPose,2> poses;
@@ -971,6 +1021,20 @@ public:
         const int size=vr_canvas_resolution();
         std::array<VrFrameState,2> states{};
         if(flight) {
+            // Diagnostic key repeats begin only after the real flight is ready.
+            // SDL events follow the same translation/BIOS path as a held key.
+            if(benchmark&&vr_scene_initialized()&&SDL_getenv("F117_VR_TEST_INPUT")) {
+                Uint64 now=SDL_GetTicksNS();if(!inputStarted)inputStarted=now;
+                unsigned due=unsigned((now-inputStarted)/(80*SDL_NS_PER_MS));
+                unsigned limit=!std::strcmp(SDL_getenv("F117_VR_TEST_INPUT"),"control")?12:54;
+                while(inputEvents<=due&&inputEvents<limit) {
+                    bool reverse=!std::strcmp(SDL_getenv("F117_VR_TEST_INPUT"),"held-reverse");
+                    bool up=inputEvents>=12&&(!reverse||inputEvents<30||inputEvents>=42);
+                    SDL_Event e{};e.type=SDL_EVENT_KEY_DOWN;e.key.down=true;e.key.repeat=(inputEvents!=0);
+                    e.key.scancode=up?SDL_SCANCODE_EQUALS:SDL_SCANCODE_MINUS;e.key.key=up?SDLK_EQUALS:SDLK_MINUS;
+                    SDL_PushEvent(&e);inputEvents++;
+                }
+            }
             enh_vr_frame(); // latch one alpha for both eyes
             Uint64 hudStart=SDL_GetTicksNS();
             hudPixels.resize(size_t(320*panelScale)*91*panelScale);
@@ -1042,10 +1106,11 @@ public:
         }
         if(timing&&flight)for(int i=0;i<2;i++) {
             const auto &s=states[i];
-            std::fprintf(timing,"%llu,%d,%lld,%llu,%llu,%.9f,%d,%d,%d,%d,%d,%d\n",
+            std::fprintf(timing,"%llu,%d,%lld,%llu,%llu,%.9f,%d,%d,%d,%d,%d,%d,%d,%d,%.4f,%.4f,%.4f,%.4f\n",
                 (unsigned long long)submission,i,(long long)frame.predictedDisplayTime,
                 (unsigned long long)workStarted,(unsigned long long)s.frame,s.alpha,
-                s.x,s.y,s.heading,s.pitch,s.roll,captured);
+                s.x,s.y,s.heading,s.pitch,s.roll,captured,s.throttle,s.thrust,
+                (SDL_GetTicksNS()-workStarted)/1e6,(panelDone-workStarted)/1e6,hudMS,geometryMS);
         }
         submission++;
         lastFrame=SDL_GetTicksNS();frameMS+=(lastFrame-started)/1e6;frames++;

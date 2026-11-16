@@ -1,6 +1,7 @@
 #include "enhanced/vr_presentation.h"
 #include "enhanced/vr.h"
 #include "enhanced/vr_gpu.h"
+#include "enhanced/vr_visibility.h"
 #include "mem.h"
 #include "render3d/r3d.h"
 #include <stdio.h>
@@ -8,11 +9,13 @@
 #include <string.h>
 
 unsigned vr_presentation_effects(void) { return vr_options.presentation ? vr_options.effects : 0; }
-bool vr_presentation_range(void) { return vr_gpu_active() && vr_options.presentation && vr_options.distance; }
-int vr_presentation_far(int original) { return vr_presentation_range() ? (original > 15000 ? 30000 : original*2) : original; }
-int vr_presentation_dot(int original) { return vr_presentation_range() ? original*2 : original; }
+int vr_presentation_factor(void) { return vr_gpu_active()&&vr_options.presentation&&vr_options.distance?vr_options.draw_distance:1; }
+bool vr_presentation_range(void) { return vr_presentation_factor()>1; }
+int vr_presentation_cell_radius(void) { return 2*vr_presentation_factor(); }
+int vr_presentation_far(int original) { return original*vr_presentation_factor(); }
+int vr_presentation_dot(int original) { return original*vr_presentation_factor(); }
 
-typedef struct { uint8_t data[22]; double units; int32_t key; unsigned order; } Record;
+typedef struct { uint8_t data[22]; double units; VrVisibilityRecord visibility; unsigned order; } Record;
 static Record *records;
 static size_t count,capacity;
 static unsigned spills;
@@ -27,22 +30,23 @@ static void append(unsigned rec) {
     }
     Record *r=&records[count];
     memcpy(r->data,DSP(rec),sizeof r->data);
-    r->units=vr_queued_units(rec);r->key=(int32_t)DSL(rec);r->order=slot_order[(rec-0x49F0)/22];count++;
+    r->units=vr_queued_units(rec);r->visibility=vr_visibility_record(rec);r->order=slot_order[(rec-0x49F0)/22];count++;
 }
-void vr_presentation_queue_reset(void) { count=0;spills=sequence=0;merged=false; }
-void vr_presentation_queue_note(unsigned rec) { if(vr_presentation_range())slot_order[(rec-0x49F0)/22]=sequence++; }
+void vr_presentation_queue_reset(void) { count=0;spills=sequence=0;merged=false;vr_visibility_reset(); }
+void vr_presentation_queue_note(unsigned rec) { vr_visibility_note(rec);if(vr_presentation_range())slot_order[(rec-0x49F0)/22]=sequence++; }
 void vr_presentation_spill(unsigned rec) { if(vr_presentation_range()){append(rec);spills++;} }
 unsigned vr_presentation_spill_count(void) { return spills; }
 static int compare(const void *a,const void *b) {
     const Record *x=a,*y=b;
-    if(x->key!=y->key)return x->key>y->key?-1:1;
+    if(x->visibility.key!=y->visibility.key)return x->visibility.key>y->visibility.key?-1:1;
     /* The original insert puts a new record before existing equal keys. */
     return x->order>y->order?-1:x->order!=y->order;
 }
 int vr_presentation_queue_count(int original) {
-    if(!vr_presentation_range() || !count)return original;
+    if(!vr_presentation_range())return original;
     for(int i=0;i<original;i++)append(DSW(0x4E3C+2*i));
-    qsort(records,count,sizeof *records,compare);merged=true;
+    if(count>1)qsort(records,count,sizeof *records,compare);
+    merged=true;
     return (int)count;
 }
 unsigned vr_presentation_queue_record(int i,unsigned original) {
@@ -51,13 +55,24 @@ unsigned vr_presentation_queue_record(int i,unsigned original) {
      * its player-part ordering locals. No pointer/table extends into DGROUP. */
     memcpy(DSP(0x49F0),records[i].data,22);
     vr_set_queued_units(0x49F0,records[i].units);
+    vr_visibility_set_record(0x49F0,records[i].visibility);
     return 0x49F0;
 }
 static struct { bool set;int32_t x,y;int altitude,heading; } test_camera;
+static int test_aircraft_distance;
+void vr_presentation_test_aircraft(int distance) { test_aircraft_distance=distance; }
 void vr_presentation_test_camera(int32_t x,int32_t y,int altitude,int heading) {
     test_camera.set=true;test_camera.x=x;test_camera.y=y;test_camera.altitude=altitude;test_camera.heading=heading;
 }
 void vr_presentation_test_scene(void) {
+    if(test_aircraft_distance>0&&getenv("F117_VR_BENCHMARK")&&getenv("F117_VR_VISIBILITY_TEST")) {
+        DSW(0x2DEE)=DSW(0x2DF0)=DSW(0x2DF2)=0;DSW(0x2DF4)=3000;
+        DSW(0xDED0)=1;unsigned u=0xC140;memset(DSP(u),0,36);
+        DSL(u+6)=DSL(0xBA10);DSL(u+10)=0x100000-DSL(0xC02A)-test_aircraft_distance;
+        DSW(u)=(uint16_t)(DSL(u+6)>>5);DSW(u+2)=(uint16_t)(DSL(u+10)>>5);
+        DSW(u+4)=3016;DSW(u+0x14)=1;DSW(u+0x16)=3;DSW(u+0x18)=200;
+        return;
+    }
     if(!test_camera.set||!getenv("F117_VR_BENCHMARK")||!getenv("F117_VR_COAST_FIXTURE"))return;
     DSL(0xBA10)=(uint32_t)test_camera.x;DSL(0xC02A)=(uint32_t)test_camera.y;
     DSW(0xC0A4)=(uint16_t)(DSL(0xBA10)>>5);DSW(0xC0B2)=(uint16_t)((0x100000-DSL(0xC02A))>>5);

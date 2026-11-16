@@ -33,10 +33,12 @@ def main():
     p.add_argument('--software', action='store_true')
     p.add_argument('--original-presentation', action='store_true', help='disable the new scenery presentation, including its render distance')
     p.add_argument('--original-distance', action='store_true', help='keep presentation effects but restore the original draw range/queue')
+    p.add_argument('--draw-distance', type=int, choices=(1,2,4,8), help='model and scenery range relative to the original game')
     p.add_argument('--smooth-shading', action='store_true', help='verify that the desktop shading switch retains the GPU path')
     p.add_argument('--capture-world', action='store_true', help='save diagnostic world views without treating software pixels as a styling oracle')
     p.add_argument('--pose', help='deterministic test pose: frame,heading,altitude_feet,bank')
     p.add_argument('--coast-fixture', action='store_true', help='render-only camera beside a coast found in the original terrain; does not move the simulated aircraft')
+    p.add_argument('--visibility-test', action='store_true', help='trace an original aircraft model/dot representation through distance')
     p.add_argument('--without', action='append', default=[], choices=('water-detail','shorelines','wakes','atmosphere','landing-detail'), help='disable one presentation effect for controlled comparisons')
     p.add_argument('--samples', type=int, choices=(1,2,4,8), help='limit GPU MSAA for before/after comparisons (default 8)')
     p.add_argument('--headset', action='store_true')
@@ -97,6 +99,8 @@ def main():
         env['F117_TEST_POSE']=a.pose
     if a.coast_fixture:
         env['F117_VR_COAST_FIXTURE']='1'
+    if a.visibility_test:
+        env['F117_VR_VISIBILITY_TEST']='1'
     cmd = [str(a.exe.resolve()), '--vr' if a.headset else '--vr-preview', '--vr-resolution', str(a.resolution),
            '--game-dir', str(game), '--fps', 'vsync' if a.pacing else 'off', '--dither', 'fine']
     if a.software:
@@ -107,10 +111,12 @@ def main():
         cmd += ['--vr-no-presentation']
     if a.original_distance:
         cmd += ['--vr-original-distance']
+    if a.draw_distance is not None:
+        cmd += ['--vr-draw-distance', str(a.draw_distance)]
     if a.smooth_shading:
         cmd += ['--smooth-shading']
     cmd += [f'--vr-no-{feature}' for feature in a.without]
-    if a.validate or a.temporal or a.hud_check or a.capture_world:
+    if a.validate or a.temporal or a.hud_check or a.capture_world or a.visibility_test:
         cmd += ['--vr-dump']
     result = subprocess.run(cmd, cwd=directory, env=env, capture_output=True, text=True, timeout=120)
     (directory / 'stdout.txt').write_text(result.stdout, encoding='utf-8')

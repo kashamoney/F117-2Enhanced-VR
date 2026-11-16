@@ -15,6 +15,7 @@ typedef struct {
     double alpha;
     int32_t x,y;
     int heading,pitch,roll;
+    int throttle,thrust;
 } VrFrameState;
 /* Snapshot-owned time: later canonical flips cannot restart an old eye pose. */
 typedef struct { uint64_t start,period; bool held; } VrClock;
@@ -23,6 +24,7 @@ double vr_clock_sample(const VrClock *clock,uint64_t now);
 typedef struct {
     int mode;                 /* 0 desktop, 1 OpenXR, 2 desktop stereo preview */
     int resolution;           /* GPU eye height; 0 = OpenXR recommendation. Software fallback: square size. */
+    int draw_distance;        /* original range multiplier: 1, 2, 4 or 8 */
     double world_scale;       /* physical metres per game metre */
     bool cockpit, diagnostic, selftest, dump, software, gpu_check;
     bool presentation, distance;
@@ -60,6 +62,7 @@ void vr_set_queued_units(unsigned record,double units);
 void vr_translate_object(void); /* preserve fractional feet in the 16.16 camera translation */
 bool vr_eye_active(void);
 double vr_near_depth(void); /* camera depth of a physical 3 cm near plane */
+double vr_camera_residual(int axis);
 bool enh_vr_render(const VrPose *eye, uint32_t *out, int w, int h);
 bool enh_vr_ready(void);
 bool vr_scene_initialized(void);

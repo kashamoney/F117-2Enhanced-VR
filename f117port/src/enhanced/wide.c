@@ -80,7 +80,7 @@ void enh_wide_range(int *xlo, int *xhi, int *ylo, int *yhi)
 /* ---------------------------------------------------------------- 04DA, the wide cell lists */
 
 typedef struct { s8 ox, oy; u8 ii; } Cell;
-static Cell lists[3][8][96];       /* [0 path B, 1 path A, 2 down-look][octant] */
+static Cell lists[3][8][1136];     /* up to 33x33, plus original path-A tail */
 static int list_n[3][8];
 static bool lists_ready;
 static int list_radius;
@@ -92,8 +92,8 @@ static const int dirx[8] = { 0, 1, 1, 1, 0, -1, -1, -1 }, diry[8] = { 1, 1, 0, -
  * far -> near and the original cells keep their order (the quirky tail of path A after the camera cell included) */
 static int build(Cell *out, const s8 (*base)[2], int nb, int dx, int dy, int dmin, bool ring, int far_min)
 {
-    Cell nw[81];
-    int radius=vr_presentation_range()?4:2;
+    Cell nw[1089];
+    int radius=vr_presentation_cell_radius();
     int nn = 0;
     for (int y = -radius; y <= radius; y++)
         for (int x = -radius; x <= radius; x++) {
@@ -106,7 +106,7 @@ static int build(Cell *out, const s8 (*base)[2], int nb, int dx, int dy, int dmi
             nw[nn].ii = (u8)(ring || d >= far_min ? 0 : 8);
             nn++;
         }
-    int dot[81], side[81];
+    int dot[1089], side[1089];
     for (int k = 0; k < nn; k++) {
         dot[k] = ring ? (abs(nw[k].ox) > abs(nw[k].oy) ? abs(nw[k].ox) : abs(nw[k].oy)) + 8 : nw[k].ox * dx + nw[k].oy * dy;
         side[k] = abs(nw[k].ox * dy - nw[k].oy * dx);
@@ -146,12 +146,12 @@ static void lists_build(void)
         list_n[2][oct] = build(lists[2][oct], (const s8 (*)[2])down, 9, 0, 0, 0, true, 0);
     }
     lists_ready = true;
-    list_radius=vr_presentation_range()?4:2;
+    list_radius=vr_presentation_cell_radius();
 }
 
 int enh_wide_cell(bool pathA, s16 pitch, int oct, int i, s16 *ox, s16 *oy)
 {
-    if (!lists_ready || list_radius!=(vr_presentation_range()?4:2)) lists_build();
+    if (!lists_ready || list_radius!=vr_presentation_cell_radius()) lists_build();
     const int kind = pathA ? 1 : pitch < wf.down_thr ? 2 : 0;
     oct &= 7;
     if (i < 0 || i >= list_n[kind][oct]) return -1;

@@ -6,6 +6,8 @@
 #include "sim/sim_priv.h"
 #include "enhanced/interp.h"   /* ENH: smooth clips, projectiles between whole cells */
 #include "enhanced/vr_presentation.h" /* ENH: render-only distant models */
+#include "enhanced/vr_gpu.h" /* ENH: representation trace */
+#include "enhanced/vr_visibility.h" /* ENH: continuous dot/model handoff */
 
 #define LONG(o) ((s32)DSL(o))
 
@@ -139,11 +141,15 @@ void r3d_draw_world_objects(void)
         r3d_project_point(DSS(U), DSS((u16)(U + 2)), DSS((u16)(U + 4)));
         if (DSS(0xDE92) >= 0 || DSW(0x49E0) == 0xFFFF) continue;
         DSW(0xDE92) = (u16)(DSS(0xDE92) >> hi);
+        vr_visibility_actor_candidate(i); /* ENH: retain the projected far marker */
         if (DSS(0xDE92) <= vr_presentation_dot(-0x20)) { /* ENH: render-only model-to-dot range */
+            vr_gpu_unit_dot(); /* ENH: representation trace */
+            vr_visibility_actor_dot(i); /* ENH: this unit already has a visible representation */
             gfx_set_fg(0x0F);
             if (enh_shadow_on) enh_dot_begin();   /* ENH: S3.1, the dot at N x */
             hud_line_view(DSS(0x49E0), DSS(0x49E8), DSS(0x49E0), DSS(0x49E8));
             if (enh_shadow_on) enh_dot_end(0x0F);   /* ENH: S3.1 */
+            vr_visibility_actor_end(); /* ENH: marker provenance ends here */
             continue;
         }
         if (DSS((u16)(U + 4)) < 0x3E7 && DSW(0x3658) == 0) {
@@ -158,9 +164,11 @@ void r3d_draw_world_objects(void)
         if (DSB((u16)(U + 0x16)) & 0x20) DSB(0x49C6) |= 0x20;
         s16 alt = DSS((u16)(U + 4));
         if (!(DSB(0xC07A) & 0x80)) alt = (s16)(alt - 0x10);
-        u16 far_ = DSS(0xDE92) <= -0x10 ? 1 : 0;
+        u16 far_ = DSS(0xDE92) <= vr_presentation_dot(-0x10) ? 1 : 0; /* ENH: move the coarse aircraft handoff with its draw range */
+        vr_visibility_actor_begin(i); /* ENH: track the actual aircraft geometry, excluding its shadow */
         r3d_draw_model(DSW((u16)(0x2FDC + 0x20 * DSW((u16)(U + 0x14)) + 2 * far_)), LONG((u16)(U + 6)), LONG((u16)(U + 0xA)), alt, DSS((u16)(U + 0xE)), DSS((u16)(U + 0x10)),
                        DSS((u16)(U + 0x12)), (s16)(4 - hi));
+        vr_visibility_actor_end(); /* ENH: queued records retain the unit identity */
     }
     DSW(0x49C6) = 0;
     /* (C3) air-target commit (weapons logic) */

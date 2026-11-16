@@ -2,6 +2,8 @@
  * the terrain walk 04DA, the map-MFD terrain 119C / 11F2 / 1353 / 13AC / 13E3, the scenery collision probe 0FFB / 77D9 and the site / unit helpers BC12 / BCD7. */
 #include "render3d/r3d.h"
 #include "enhanced/vr.h"          /* ENH: physical scale of each terrain level */
+#include "enhanced/vr_presentation.h" /* ENH: larger terrain neighbourhood */
+#include "enhanced/vr_visibility.h" /* ENH: unwrapped cell origins */
 #include "sim/sim.h"
 #include "enhanced/wide.h"   /* ENH: S3.4 */
 #include "enhanced/enhanced.h"   /* ENH: fine terrain */
@@ -88,11 +90,12 @@ void r3d_draw_terrain(s16 a1, s16 pitch, s32 x, s32 y, s32 z)
             if (!pathA && pitch < (s16)0xD555) { ox = DSS((u16)(0x04CC + 2 * i)); oy = DSS((u16)(0x04DE + 2 * i)); }
             else { ox = DSS((u16)(0x034C + 2 * (oct * 9 + i))); oy = DSS((u16)(0x034C + 2 * (((oct + 2) & 7) * 9 + i))); }
             }
+            vr_visibility_terrain(fx-(int32_t)ox*4096-0x800,fy-(int32_t)oy*4096-0x800,DSS(0x94DA)); /* ENH: retain full cell origin */
             DSW(0x94D6) = (u16)(fx - (u16)(ox << 12) - 0x800);
             DSW(0x94D8) = (u16)(fy - (u16)(oy << 12) - 0x800);
             if (pathA) {
                 DSW(0x497A) = 7;
-                if (r3d_cull_point((s16)-DSS(0x94D6), (s16)-DSS(0x94D8), (s16)-DSS(0x94DA))) continue;
+                if (!vr_presentation_range() && r3d_cull_point((s16)-DSS(0x94D6), (s16)-DSS(0x94D8), (s16)-DSS(0x94DA))) continue; /* ENH: extended cells cull individual models */
             }
             r3d_set_origin(DSS(0x94D6), DSS(0x94D8), DSS(0x94DA));
             s16 tx = (s16)(ox + cx), ty = (s16)(oy + cy);
@@ -130,6 +133,7 @@ void r3d_draw_terrain(s16 a1, s16 pitch, s32 x, s32 y, s32 z)
         }
     }
     enh_terr_d[0] = enh_terr_d[1] = enh_terr_d[2] = 0;                    /* ENH: fine terrain */
+    vr_visibility_terrain_end(); /* ENH: clear full cell origin */
 }
 
 /* ------------------------------------------------------------------------------------------------ the map MFD */

@@ -9,6 +9,7 @@ param(
     [ValidateRange(0,4096)][int]$Resolution = 0,
     [switch]$Software,
     [switch]$OriginalPresentation,
+    [ValidateSet(1,2,4,8)][int]$DrawDistance = 8,
     [switch]$OriginalDrawDistance,
     [switch]$NoWaterDetail,
     [switch]$NoShorelines,
@@ -33,6 +34,7 @@ $gameArgs = @('--vr-resolution', $Resolution.ToString(), '--vr-world-scale', $Wo
 if ($Resolution -gt 0 -and $Resolution -lt 640) { throw 'Resolution must be 0 (native) or 640..4096 pixels high per eye.' }
 if ($Software) { $gameArgs += '--vr-software' }
 if ($OriginalPresentation) { $gameArgs += '--vr-no-presentation' }
+$gameArgs += @('--vr-draw-distance', $DrawDistance.ToString())
 if ($OriginalDrawDistance) { $gameArgs += '--vr-original-distance' }
 if ($NoWaterDetail) { $gameArgs += '--vr-no-water-detail' }
 if ($NoShorelines) { $gameArgs += '--vr-no-shorelines' }

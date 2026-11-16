@@ -4,6 +4,7 @@
 #include "enhanced/enh_canvas.h"
 #include "enhanced/vr_gpu.h"
 #include "enhanced/vr_presentation.h"
+#include "enhanced/vr_visibility.h"
 #include "enhanced/vr_cockpit.h"
 #include "enhanced/vr_canopy.h"
 #include "mem.h"
@@ -16,7 +17,7 @@
 #define VR_PI 3.14159265358979323846
 #define VR_METRES_PER_UNIT (512000.0 / 1048576.0)
 VrOptions vr_options = { .resolution = 0, .world_scale = 1.0, .cockpit = true,
-    .presentation=true, .distance=true, .effects=VR_WATER|VR_SHORE|VR_WAKES|VR_ATMOSPHERE|VR_LANDING };
+    .presentation=true, .distance=true, .draw_distance=8, .effects=VR_WATER|VR_SHORE|VR_WAKES|VR_ATMOSPHERE|VR_LANDING };
 void vr_clock_publish(VrClock *clock,uint64_t now,uint64_t flip,uint64_t period) {
     if(!period)period=100000000;
     /* A stale flip belongs to the pre-pause frame, not the new snapshot. */
@@ -31,12 +32,18 @@ double vr_clock_sample(const VrClock *clock,uint64_t now) {
 }
 static bool eye_active;
 static double eye_delta[3], object_units = 1.0, queued_units[50];
+static double camera_residual[3];
+double vr_camera_residual(int axis) { return eye_active?camera_residual[axis]:0; }
 
 int vr_parse_arg(int argc, char **argv, int i)
 {
     const char *a = argv[i];
     if (!strcmp(a,"--vr-no-presentation")) { vr_options.presentation=false;return 1; }
     if (!strcmp(a,"--vr-original-distance")) { vr_options.distance=false;return 1; }
+    if (!strcmp(a,"--vr-draw-distance")&&i+1<argc) {
+        int n=atoi(argv[i+1]);if((n!=1&&n!=2&&n!=4&&n!=8)||strlen(argv[i+1])!=1){fputs("--vr-draw-distance: expected 1, 2, 4 or 8\n",stderr);exit(2);}
+        vr_options.draw_distance=n;vr_options.distance=true;return 2;
+    }
     const char *off[]={"--vr-no-water-detail","--vr-no-shorelines","--vr-no-wakes","--vr-no-atmosphere","--vr-no-landing-detail"};
     for(unsigned k=0;k<5;k++)if(!strcmp(a,off[k])) { vr_options.effects&=~(1u<<k);return 1; }
     if (!strcmp(a, "--vr")) { vr_options.mode = 1; return 1; }
@@ -128,6 +135,7 @@ void vr_eye_begin(const VrPose *eye, int heading, int pitch, int roll)
     /* The engine supplies its original pilot-eye datum; tracking adds only the
      * physical displacement from the recentered seated pose. */
     object_units=1;
+    memset(camera_residual,0,sizeof camera_residual);
     for(int i=0;i<50;i++) queued_units[i]=1;
     eye_active=true;
     if(vr_gpu_active()) {
@@ -153,9 +161,12 @@ void vr_translate_object(void)
     if(!eye_active) return;
     for(int k=0;k<3;k++) {
         double d=0;
-        for(int j=0;j<3;j++) d-=eye_delta[j]*object_units*DSS(0x7AF8+6*j+2*k);
+        for(int j=0;j<3;j++) d+=(vr_visibility_translation(j)-eye_delta[j]*object_units)*DSS(0x7AF8+6*j+2*k);
         /* Q15 camera matrix times fractional model coordinates -> signed 16.16 vertex translation. */
-        DSSL(0x7CA2+4*k)+=(s32)llround(d);
+        int64_t full=(int64_t)DSSL(0x7CA2+4*k)+(int64_t)llround(d),bounded=full;
+        if(bounded>0x6FFF0000LL)bounded=0x6FFF0000LL;
+        if(bounded<-0x6FFF0000LL)bounded=-0x6FFF0000LL;
+        DSSL(0x7CA2+4*k)=(s32)bounded;camera_residual[k]=(full-bounded)/65536.0;
     }
 }
 void vr_capture_desktop(const uint32_t *src,int w,int h,uint32_t *out,int scale)

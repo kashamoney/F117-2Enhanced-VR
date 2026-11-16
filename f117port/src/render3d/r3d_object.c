@@ -3,6 +3,7 @@
  * 3DX bank segment word DS:8560 throughout; every pointer argument is a DS offset or an ES offset as in the original, so the work buffers keep their
  * adjacency (part slots 7B1C.. run into the eye vectors 7C3C exactly as in the original, spec "Part limit"). */
 #include <string.h>
+#include "enhanced/vr_visibility.h" /* ENH: extended GPU frustum */
 
 #include "render3d/r3d.h"
 #include "enhanced/sandbox.h"      /* ENH: S2.4 */
@@ -43,6 +44,7 @@ void r3d_set_camera(u16 mat9, s16 zoom)
 /* 11EB:02B6 r3d_frustum_test: 1 = visible (AX = 0, ZF = 1) */
 int r3d_frustum_test(s16 radius)
 {
+    int visible;if(vr_visibility_frustum(radius,&visible))return visible; /* ENH: no s16 GPU depth cap */
     s16 zh = DSS(0x7CAC);
     if ((u16)((u16)(abs16(zh) + 1) << 1) >= DSW(0x7D2E)) return 0;
     s16 t = (s16)(zh + radius + zh);
@@ -464,7 +466,8 @@ static u16 object_head(u16 obj, s16 x, s16 y, s16 z, u16 mat9, bool frustum_alwa
     vr_translate_object();        /* ENH: retains sub-foot stereo offsets in 16.16 camera space */
     u16 si = ESW(2 * obj + 2);
     u16 az = abs16(DSS(0x7CAC)), md, mdl;
-    do { md = ESW(si); mdl = ESW(si + 2); si = (u16)(si + 4); } while (az > md);
+    int lod_depth=vr_visibility_lod_depth(az); /* ENH: retain aircraft detail over the extended visual range */
+    do { md = ESW(si); mdl = ESW(si + 2); si = (u16)(si + 4); } while (lod_depth > md);
     si = mdl;
     u16 radius = ESW(si);
     si = (u16)(si + 2);

@@ -8,6 +8,7 @@
 #include "enhanced/wide.h"      /* ENH: S3.4 */
 #include "enhanced/vr.h"        /* ENH: per-object stereo translation scale */
 #include "enhanced/vr_presentation.h" /* ENH: render distance / host queue */
+#include "enhanced/vr_visibility.h" /* ENH: extended render coordinates */
 #include <math.h>
 
 #define LONG(o) ((s32)DSL(o))
@@ -74,6 +75,7 @@ void r3d_begin_scene(u16 vp, s16 a1, s16 a2, s16 a3, s16 ox, s16 oy, s16 oz, s16
 void r3d_end_scene(void)
 {
     r3d_draw_queued();
+    vr_visibility_actor_end(); /* ENH: overlays are independent of aircraft geometry */
     offset_clear();
     u16 t = (u16)(DSW(0x4EA0) << 7);
     DSW(0xC04E) += (u16)(t << 3);
@@ -121,7 +123,7 @@ int r3d_cull_core(s16 x, s16 y, s16 z)
     DSSL(0x4958) = A; DSSL(0x495C) = B; DSSL(0x4960) = C;
     s16 Ah = (s16)((u32)A >> 16), Bh = (s16)((u32)B >> 16), Ch = (s16)((u32)C >> 16);
     u16 cls = (u16)(2 * DSW(0x497A));
-    s16 far_ = (s16)vr_presentation_far(DSS(0x48B6)), d; /* ENH: GPU-only visibility */
+    s16 far_ = (s16)vr_visibility_cull_limit(DSS(0x48B6)), d; /* ENH: full range checked before bounded cull */
     if (Ch > far_) return 1;
     if (Ch < DSS((u16)(0x48C6 + cls))) return 1;
     if (DSW(0x4360)) {
@@ -183,19 +185,22 @@ void r3d_place_object(u16 type, s16 a1, s16 a2, s16 a3, s16 X, s16 Y, s16 Z)
     DSW(0x497A) = flags & 7;
     DSW(0x8560) = DSW((u16)(0xB75E + 2 * bank));
     DSW(0x4966) = (u16)(Y - DSW(0x497E)); DSW(0x4968) = (u16)(Z - DSW(0x4980)); DSW(0x4964) = (u16)(X - DSW(0x497C));
-    if (r3d_cull_core(DSS(0x4964), DSS(0x4966), DSS(0x4968))) return;
-    if (flags & 0x80) { r3d_queue_insert(); return; }
+    if (!vr_visibility_place(X,Y,Z)) { vr_visibility_place_end();return; } /* ENH: full-precision range and translation */
+    if (r3d_cull_core(DSS(0x4964), DSS(0x4966), DSS(0x4968))) { vr_visibility_place_end();return; } /* ENH: clear render context */
+    if (flags & 0x80) { r3d_queue_insert();vr_visibility_place_end();return; } /* ENH: queue stores the full translation */
     DSW(0xC030) = dead;
     DSB(0x4894) = (u8)r3d_depth_shade();
     ENH_HR(hr_shade_object());   /* ENH: S3.5, the continuous shade */
     mat_from_euler((u16)-a1, (u16)-a2, (u16)a3, 0x49A0);
     r3d_transpose49A0();
     r3d_draw_object(idx, DSS(0x4964), DSS(0x4968), (s16)-DSS(0x4966), 0x49A0, 0xC02E);
+    vr_visibility_place_end(); /* ENH: render-only context */
 }
 
 /* 0000:BD8F r3d_draw_model: a sim object at world (x, y, alt) relative to the camera, scaled by the lod shift */
 void r3d_draw_model(u16 model, s32 x, s32 y, s16 alt, s16 ang1, s16 ang2, s16 ang3, s16 lod)
 {
+    if(vr_visibility_model(model,x,y,alt,ang1,ang2,ang3,lod))return; /* ENH: extended model coordinates */
     u16 mdl = r3d_scenery_id(model);
     s32 rx = (s32)((u32)x - (u32)LONG(0xBA10));
     s32 ry = (s32)((u32)y + (u32)LONG(0xC02A) - 0x01000000u);
@@ -315,6 +320,7 @@ void r3d_draw_queued(void)
     for (int i = 0; i < count; i++) {
         u16 rec = (u16)vr_presentation_queue_record(i, i < 50 ? QPTR(i) : 0), v; /* ENH: host overflow */
         vr_dequeue_units(rec);  /* ENH: restore that record's stereo translation scale */
+        vr_visibility_load(rec); /* ENH: restore full translation and actor provenance */
         if (DSW((u16)(rec + 8)) & 0x8000) { DSW(0xC030) = 1; v = 0; } else { DSW(0xC030) = 0; v = DSW(0x9874); }
         DSW(0xC044) = v; DSW(0xC042) = v;
         u16 t = DSW((u16)(rec + 8));

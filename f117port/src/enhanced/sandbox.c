@@ -713,7 +713,7 @@ bool enh_vr_render(const VrPose *eye, u32 *out, int w, int h)
     enh_interp_apply(vr_alpha);
     vr_presentation_test_scene();
     const int heading = DSW(0x2DEE), pitch = DSW(0x2DF0), roll = DSW(0x2DF2);
-    vr_rendered=(VrFrameState){vg_frame,vr_alpha,DSSL(0xBA10),DSSL(0xC02A),heading,pitch,roll};
+    vr_rendered=(VrFrameState){vg_frame,vr_alpha,DSSL(0xBA10),DSSL(0xC02A),heading,pitch,roll,DSS(0x2DFE),DSS(0xB170)};
     int ch, cp, cr;
     vr_camera(eye, heading, pitch, roll, &ch, &cp, &cr);
     vr_eye_begin(eye, heading, pitch, roll);

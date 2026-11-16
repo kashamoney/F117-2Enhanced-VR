@@ -24,7 +24,7 @@ uint WP(O i):SV_TARGET {
     // AND preserves all attributes. OR adds water without erasing ground bands.
     if(hi==254)return 0xFFFFFF00|c;
     if(hi==253)return c|(i.flags&0x300);
-    uint depth=i.invDepth>0 ? f32tof16(min(65000,rcp(max(i.invDepth,1e-8)))) : 0;
+    uint depth=i.invDepth>0 ? f32tof16(min(65000,rcp(max(i.invDepth,1e-8))/8)) : 0;
     return c|i.flags|(uint(round(saturate(i.band)*15))<<12)|(depth<<16);
 }
 Texture2DMS<uint,WORLD_SAMPLES> idxMS:register(t0);
@@ -55,7 +55,7 @@ float wavelet(float2 world,float size,float time) {
 float4 colourAt(uint v,float seaDepth,float2 ray) {
     uint i=v&255;float4 c=pal(i);uint effects=uint(settings.x);
     if((effects&8)==0)return c;
-    float depth=f16tof32(v>>16);
+    float depth=abs(f16tof32(v>>16))*8;
     // Interpolate adjacent original DAC entries, centred on each former band.
     if((v&0x600)!=0 && depth==0) {
         float f=float((v>>12)&15)/15-.5;
@@ -71,7 +71,7 @@ float4 colourAt(uint v,float seaDepth,float2 ray) {
         // The same horizon colours as the source game's sky and ground.
         float4 horizon=lerp(pal(0x80),pal(0x70),step(0,seaDepth));
         c=lerp(c,horizon,haze);
-        if(settings.z>1) {
+        if(settings.z>1 && (v&0x80000000)==0) {
             float units=exp2(float((v>>12)&15)-8);
             float farDepth=max(1,viewX.w/units);
             float d=depth*(1+.25*abs(ray.x)+.1875*abs(ray.y));
@@ -147,5 +147,9 @@ float4 Inspect(float4 p:SV_POSITION):SV_TARGET {
         c+=float3(land(v)?1:0,water(v)?1:0,(v&0x800)?1:0);
     }
     return float4(c/WORLD_SAMPLES,1);
+}
+float4 InspectActor(float4 p:SV_POSITION):SV_TARGET {
+    float c=0;[unroll]for(int k=0;k<WORLD_SAMPLES;k++)c+=(loadIndex(int2(p.xy),k)&0x80000000)?1:0;
+    return float4(c/WORLD_SAMPLES,c/WORLD_SAMPLES,c/WORLD_SAMPLES,1);
 }
 )HLSL";

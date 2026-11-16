@@ -146,11 +146,17 @@ path sends original geometry and a palette instead. No original assets or flight
 rules change. The original palette AND/OR operations and stippled faces are retained
 in an integer GPU target before colour conversion and antialiasing.
 
-The GPU VR presentation now defaults to twice the original model/draw cutoff and
-a 9x9 terrain neighbourhood (formerly 5x5), preserving the original lower-detail
-models. A host-side render queue retains scenery beyond the original 50-record
-limit. Models lose contrast near their render cutoff; targeting, detection and
-weapon ranges remain the original's.
+The GPU VR presentation defaults to eight times the original model/draw cutoff
+and a 33x33 terrain neighbourhood (originally 5x5). Aircraft detail transitions
+move farther out too; their original white point remains when a distant or
+edge-on model is too small to cover a pixel. A host render queue retains scenery
+beyond the original 50-record limit. Terrain fades into the distant haze;
+targeting, detection and weapon ranges remain the original's.
+
+Use `Carrier-VR.cmd -DrawDistance 4` for a lighter 4x setting, or pass
+`-DrawDistance 1`, `2`, `4` or `8` to either VR launcher. The extended coordinates,
+model/point handoff and held-thrust timing checks are documented in
+[`VR_VISIBILITY_REVIEW.md`](VR_VISIBILITY_REVIEW.md).
 
 Sparse blue wavelets stay on the sea in world coordinates and fade with distance
 and pixel footprint. Coast edges and restrained wash around original ships help
@@ -172,6 +178,7 @@ Each addition has an independent switch:
 | Launcher option | Executable option |
 | --- | --- |
 | `-OriginalPresentation` | `--vr-no-presentation` |
+| `-DrawDistance 8` (default; 1, 2, 4, 8) | `--vr-draw-distance 8` |
 | `-OriginalDrawDistance` | `--vr-original-distance` |
 | `-NoWaterDetail` | `--vr-no-water-detail` |
 | `-NoShorelines` | `--vr-no-shorelines` |
