@@ -610,6 +610,25 @@ bool enh_vr_ready(void)
 }
 static double vr_alpha;
 static bool vr_hud_export;
+static int vr_hud_fixture_kind;
+static bool vr_hud_fixture_selected;
+static void vr_hud_fixture(void) {
+    if(!vr_hud_fixture_kind)return;
+    int weapon=-1;
+    for(int i=0;i<32;i++)if(DSS(0x3678+26*i)==vr_hud_fixture_kind) {
+        if(weapon<0)weapon=i;
+        const char *name=ds_str(0x366C+26*i);
+        if(!memcmp(name,"Durandal",8)||!memcmp(name,"DURANDAL",8)){weapon=i;break;}
+    }
+    if(weapon<0)return;
+    unsigned site=DSW(0xE2DC),s=0xB2A4+16*site;
+    DSW(s)=DSW(0xC0A4);DSW(s+2)=DSW(0xC0B2)-(vr_hud_fixture_kind==0x1E?1024:256);
+    DSW(0xE2FE)=2;DSW(0x364E)=0;DSW(0x363E)=(u16)weapon;DSW(0x3640)=1;
+    DSW(0x3D66)=vr_hud_fixture_selected?(u16)site:0xFFFF;
+    DSW(0x3D64)=0xFFFF;DSW(0x3D6A)=0;
+    DSW(0x2DEE)=DSW(0x2DF0)=DSW(0x2DF2)=0;
+    DSW(0x2DF4)=DSW(0x2DF6)=vr_hud_fixture_kind==0x1E?4000:800;
+}
 bool enh_vr_hud_export_active(void){return vr_hud_export;}
 static void vr_restore(void)
 {
@@ -622,6 +641,21 @@ static void vr_restore(void)
             saved+=reg[i].n;
         }
     }
+}
+static void vr_hud_symbols(void) {
+    /* Match the normal front-view projection without drawing scenery. The
+     * original object overlay owns target boxes, the bombing bar and diamond. */
+    int heading=DSS(0x2DEE),pitch=DSS(0x2DF0),roll=DSS(0x2DF2);
+    sim_matrix_from_angles(0xB156,heading,pitch,roll);
+    DSL(0xB288)=DSL(0xBA10);DSL(0xB752)=DSL(0xC02A);
+    DSW(0xB75C)=(u16)(DSS(0x2DF4)+VR_PILOT_EYE_UNITS);
+    u16 vp=DSW(0x0344);DSW(vp)=(u16)flip_flag();
+    DSW(vp+0x0E)=DSW(vp+0x12)=0;DSW(vp+0x10)=90;DSW(vp+0x14)=319;
+    enh_set_view(0);
+    r3d_begin_scene(vp,(s16)-heading,(s16)pitch,(s16)roll,0,0,DSS(0xB75C),0,0x100);
+    r3d_end_scene();
+    u16 mfd=DSW(0xDFDC);DSW(0xDFDC)=0; /* live MFDs already have their own texture */
+    obj_overlay_frame();DSW(0xDFDC)=mfd;
 }
 /* Draw the original bitmap text, keyed symbols and enhanced vector lines onto
  * an empty canvas. No scenery/cockpit art enters this texture, and drawing tags
@@ -638,6 +672,7 @@ bool enh_vr_hud_render(u32 *out,int scale)
     if(!image_save(&img_live)||!enh_canvas_snap_for_eye(&cv_scratch,&img_a.cv))return false;
     enh_canvas_snap_swap(&cv_scratch);image_load(&img_a);enh_sbx=true;
     enh_interp_apply(vr_alpha);
+    vr_hud_fixture();
     enh_layers_reset();
     DSW(0xC07A)=0;DSW(0x365E)=1;DSB(0x294B)=0;DSB(0x4088)=1;
     DSW(0xDEDA)=0; /* the MFD scope is already in the live instrument texture */
@@ -645,7 +680,7 @@ bool enh_vr_hud_render(u32 *out,int scale)
      * driver flag and every engine write below are restored with img_live. */
     bool shadow=enh_shadow_on;enh_shadow_on=false;flip(0);enh_shadow_on=shadow;
     page_select(1);memset(seg_ptr(video_page_seg(1)),0,320*91);
-    vr_hud_export=true;hud_overlay_frame();hud_draw_far();vr_hud_export=false;
+    vr_hud_export=true;vr_hud_symbols();hud_overlay_frame();hud_draw_far();vr_hud_export=false;
     u8 dac[768];u32 pal[256];dac_get(0,256,dac);
     for(int i=0;i<256;i++)pal[i]=((u32)((dac[3*i]<<2)|(dac[3*i]>>4))<<16)
         |((u32)((dac[3*i+1]<<2)|(dac[3*i+1]>>4))<<8)|((dac[3*i+2]<<2)|(dac[3*i+2]>>4));
@@ -657,6 +692,26 @@ bool enh_vr_hud_render(u32 *out,int scale)
     }
     vr_restore();
     return true;
+}
+static bool vr_hud_bomb_check(void) {
+    int n=enh_cv.n,w=320*n,h=91*n;size_t count=(size_t)w*h;
+    u32 *off=calloc(count,sizeof *off),*on=calloc(count,sizeof *on);bool ok=off&&on;
+    for(int kind=0x1D;ok&&kind<=0x1E;kind++) {
+        vr_hud_fixture_kind=kind;vr_hud_fixture_selected=false;
+        ok=enh_vr_hud_render(off,n);vr_hud_fixture_selected=true;
+        if(ok)ok=enh_vr_hud_render(on,n);
+        unsigned bar=0,box=0;
+        for(int y=0;ok&&y<h;y++)for(int x=0;x<w;x++)if(on[y*w+x]!=off[y*w+x]) {
+            if(y>=28*n&&y<=34*n&&x>=90*n&&x<=230*n)bar++;
+            if(y>=40*n&&y<80*n&&x>=140*n&&x<180*n)box++;
+        }
+        char name[64];snprintf(name,sizeof name,"vr-hud-bomb-%d.png",kind);
+        SDL_Surface *s=SDL_CreateSurfaceFrom(w,h,SDL_PIXELFORMAT_ARGB8888,on,w*4);
+        if(s){SDL_SavePNG(s,name);SDL_DestroySurface(s);}
+        fprintf(stderr,"VR bomb HUD kind %d: %u release-bar / %u target-area pixels\n",kind,bar,box);
+        ok=ok&&bar>0&&box>0;
+    }
+    vr_hud_fixture_kind=0;free(off);free(on);return ok;
 }
 bool enh_vr_hud_check(void)
 {
@@ -673,7 +728,7 @@ bool enh_vr_hud_check(void)
         DSW(0xC07A)=0;DSW(0x365E)=1;DSB(0x294B)=0;DSB(0x4088)=1;
         bool shadow=enh_shadow_on;enh_shadow_on=false;flip(0);enh_shadow_on=shadow;
         page_select(1);memset(seg_ptr(video_page_seg(1)),0,320*91);
-        vr_hud_export=true;hud_overlay_frame();hud_draw_far();vr_hud_export=false;
+        vr_hud_export=true;vr_hud_symbols();hud_overlay_frame();hud_draw_far();vr_hud_export=false;
         u8 dac[768];u32 pal[256];dac_get(0,256,dac);
         for(int i=0;i<256;i++)pal[i]=((u32)((dac[3*i]<<2)|(dac[3*i]>>4))<<16)
             |((u32)((dac[3*i+1]<<2)|(dac[3*i+1]>>4))<<8)|((dac[3*i+2]<<2)|(dac[3*i+2]>>4));
@@ -693,7 +748,7 @@ bool enh_vr_hud_check(void)
         fprintf(stderr,"VR HUD coverage: %u / %u original HUD symbology pixels survive (%u missing, %u background pixels leaked)\n",ink-missing,ink,missing,extra);
         ok=ink>100&&missing==0&&extra==0;
     }
-    free(full);free(hud);free(masked);return ok;
+    free(full);free(hud);free(masked);return ok&&vr_hud_bomb_check();
 }
 static VrFrameState vr_rendered;
 VrFrameState enh_vr_frame_state(void) { return vr_rendered; }

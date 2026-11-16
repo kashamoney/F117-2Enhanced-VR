@@ -872,7 +872,20 @@ public:
                 }
                 std::fprintf(file,"%d,%d,%d,%.9f,%.9f,%.9f,%u\n",distance,axis,step,(lo[0]+hi[0])*.5,(lo[1]+hi[1])*.5,hi[0]-lo[0],count);
             }
-            std::fclose(file);vr_presentation_test_motion(-1,0);vr_presentation_test_aircraft(0);
+            std::fclose(file);vr_presentation_test_motion(-1,0);
+            file=std::fopen("vr-marker-poses.csv","w");if(!file)throw std::runtime_error("Marker pose trace");
+            std::fprintf(file,"distance,pose,valid,marker_x,marker_y,model_x,model_y\n");
+            const VrPose headPoses[]={{{0,0,0,1},{0,0,0}},{{0,std::sin(.2),0,std::cos(.2)},{0,0,0}},
+                {{std::sin(.15),0,0,std::cos(.15)},{0,0,0}},{{-std::sin(.15),0,0,std::cos(.15)},{0,0,0}},
+                {{0,0,std::sin(.2),std::cos(.2)},{0,0,0}},{{0,0,0,1},{.2,.15,.1}}};
+            for(int distance:{4096,32768})for(int k=0;k<6;k++) {
+                vr_presentation_test_aircraft(distance);
+                vr_gpu_begin(&geometry[0]);bool ok=enh_vr_render(&headPoses[k],nullptr,w,h);vr_gpu_end();
+                const auto &g=geometry[0];
+                std::fprintf(file,"%d,%d,%d,%.9f,%.9f,%.9f,%.9f\n",distance,k,ok&&g.actor_reference_valid&&g.marker_reference_valid,
+                    g.marker_reference[0],g.marker_reference[1],g.actor_reference[0],g.actor_reference[1]);
+            }
+            std::fclose(file);vr_presentation_test_aircraft(0);
             vr_gpu_begin(&geometry[0]);bool restored=enh_vr_render(&poses[0],nullptr,w,h);vr_gpu_end();
             if(!restored)throw std::runtime_error("Restore after visibility sweep");
             int ew=preview?(vr_options.resolution?vr_options.resolution:1920):swaps[0].w;

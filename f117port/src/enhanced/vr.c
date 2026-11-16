@@ -176,7 +176,8 @@ bool vr_project_relative(const double point[3],double *x,double *y) {
     double camera[3]={0,0,0};
     for(int k=0;k<3;k++)for(int j=0;j<3;j++)camera[k]+=(point[j]-eye_delta[j])*DSS(0x7AF8+6*j+2*k);
     if(camera[2]<=0)return false;
-    *x=camera[0]/camera[2];*y=camera[1]/camera[2];return true;
+    /* GPU world rays undo the engine's inverted, vertically compressed axis. */
+    *x=camera[0]/camera[2];*y=-camera[1]/(.75*camera[2]);return true;
 }
 void vr_capture_desktop(const uint32_t *src,int w,int h,uint32_t *out,int scale)
 {

@@ -26,6 +26,8 @@ typedef struct {
     VrGpuPresentation presentation;
     unsigned spills, water_faces, surface_faces;
     unsigned aircraft_triangles,aircraft_dots,water_speckles;
+    double actor_reference[2],marker_reference[2];
+    bool actor_reference_valid,marker_reference_valid;
     uint32_t source_camera[8]; /* raw coordinate evidence for diagnostic captures */
     double ship_min[8][2],ship_max[8][2];
 } VrGpuFrame;

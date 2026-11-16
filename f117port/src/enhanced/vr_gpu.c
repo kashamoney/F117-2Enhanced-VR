@@ -25,12 +25,14 @@ static void reset_face(void) { memset(depth_plane,0,sizeof depth_plane);memset(b
 bool vr_gpu_active(void) { return current != NULL; }
 void vr_gpu_begin(VrGpuFrame *f) { current=f;f->count=f->batch_count=f->background_count=0;f->polygons=f->invalid=f->spills=f->water_faces=f->surface_faces=0;f->fine=enh.dither_fine;nf=0;memset(&f->presentation,0,sizeof f->presentation);reset_face();
     f->aircraft_triangles=f->aircraft_dots=f->water_speckles=0;object_scale=1;
+    f->actor_reference_valid=f->marker_reference_valid=false;
     for(int i=0;i<8;i++)for(int j=0;j<2;j++){f->ship_min[i][j]=1e30;f->ship_max[i][j]=-1e30;}
 }
 void vr_gpu_end(void) { current=NULL;nf=0; }
 void vr_gpu_unit_dot(void) { if(current)current->aircraft_dots++; }
 void vr_gpu_palette(const uint32_t *p) {
     vr_visibility_finish();
+    current->marker_reference_valid=vr_visibility_actor_projection(0,current->marker_reference);
     memcpy(current->palette,p,sizeof current->palette);current->spills=vr_presentation_spill_count();
     /* Use the original rendered vessel's bounds, including exaggerated game
      * proportions. Real-world guessed dimensions can put wash inside the hull. */
@@ -145,8 +147,14 @@ static void polygon(P2 *p,int n,uint16_t colour) {
 }
 void vr_gpu_object(void) {
     object_scale=1;
-    if(!vr_gpu_active()||!vr_visibility_actor_active()||!vr_options.aircraft_visibility)return;
+    if(!vr_gpu_active()||!vr_visibility_actor_active())return;
     for(int k=0;k<3;k++)object_centre[k]=DSSL(0x7CA2+4*k)/65536.0+vr_camera_residual(k);
+    if(object_centre[2]>0) {
+        current->actor_reference_valid=true;
+        current->actor_reference[0]=object_centre[0]/object_centre[2];
+        current->actor_reference[1]=-object_centre[1]/(.75*object_centre[2]);
+    }
+    if(!vr_options.aircraft_visibility)return;
     /* A gradual 1x..2x boost over 800..3500 physical metres. Model-file radii
      * vary too much between LODs to use them as a visible-silhouette minimum. */
     /* Match the physical camera space used for atmospheric depth. Range, not

@@ -159,6 +159,11 @@ handoff visible. Nearby aircraft retain their normal size. `-OriginalAircraftSiz
 restores the previous size/point treatment for comparison. Camera-cell rounding
 has also been corrected to prevent moving aircraft from jumping at cell boundaries.
 
+The VR HUD includes the original target boxes, weapon-lock cues and bombing
+diamond/release bar. Distant points use the same projection as the 3D world
+through head movement. [`VR_TARGET_REVIEW.md`](VR_TARGET_REVIEW.md) records the
+targeting and head-pose checks.
+
 Use `Carrier-VR.cmd -DrawDistance 4` for a lighter 4x setting, or pass
 `-DrawDistance 1`, `2`, `4` or `8` to either VR launcher. The extended coordinates,
 model/point handoff and held-thrust timing checks are documented in

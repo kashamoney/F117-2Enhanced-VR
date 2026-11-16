@@ -103,6 +103,11 @@ void vr_visibility_actor_candidate(int id) {
         }
     }
 }
+bool vr_visibility_actor_projection(int id,double ray[2]) {
+    if(id<0||id>=64||!actors[id].seen)return false;
+    ray[0]=(actors[id].x-enh_hr.cx)/(256.0*enh_hr.n);
+    ray[1]=-(actors[id].y-enh_hr.cy)/(192.0*enh_hr.n);return true;
+}
 bool vr_visibility_actor_dot(int id) {
     if(active()&&id>=0&&id<64){if(vr_options.aircraft_visibility)return true;actors[id].dot=true;actor=id;}
     return false;

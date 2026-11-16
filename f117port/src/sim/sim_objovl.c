@@ -10,6 +10,7 @@
 #include "enhanced/enh_canvas.h"   /* ENH: */
 #include "enhanced/hr.h"           /* ENH: */
 #include "enhanced/wide.h"         /* ENH: S3.4 */
+#include "enhanced/vr.h"           /* ENH: isolated target-symbol HUD pass */
 
 #define LONG(o) ((s32)DSL(o))
 
@@ -208,6 +209,7 @@ void obj_overlay_frame(void)
     s16 v2e = 0, v30 = 0;                       /* the original's [bp-2Eh] / [bp-30h] (stale between the blocks that use them) */
     DSW(0x9504) = DSW(0x9D08);
     DSW(0x9D08) = 0;
+    if (enh_vr_hud_export_active()) goto vr_hud_symbols; /* ENH: world effects belong to the stereo scene */
 
     /* ---- S1: one box per live projectile */
     for (int i = 0; i < 12; i++) {
@@ -322,6 +324,7 @@ void obj_overlay_frame(void)
     } else DSW(0x9D0E) = 0;
     if (enh_shadow_on) enh_wide_ovl(false);   /* ENH: S3.4 */
 
+vr_hud_symbols: /* ENH: export original target and bomb symbols without world effects */
     if (DSW(0x365E) == 0) return;
 
     /* ---- S4: the target symbology */
@@ -624,5 +627,6 @@ void obj_overlay_frame(void)
     }
 
     /* ---- S5 */
+    if (enh_vr_hud_export_active()) return; /* ENH: keep MFD-only writes out of the isolated HUD */
     if (DSW(0xDFDC) == 0x13 && DSW(0x9504) != 0 && DSW(0x9D08) == 0) mfd_fill(2, 0x9F);
 }
