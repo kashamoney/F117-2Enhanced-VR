@@ -18,7 +18,7 @@ VrVisibilityRecord vr_visibility_record(unsigned rec);
 void vr_visibility_set_record(unsigned rec,VrVisibilityRecord value);
 void vr_visibility_load(unsigned rec);
 void vr_visibility_actor_candidate(int id);
-void vr_visibility_actor_dot(int id);
+bool vr_visibility_actor_dot(int id);
 void vr_visibility_actor_begin(int id);
 void vr_visibility_actor_end(void);
 bool vr_visibility_actor_active(void);

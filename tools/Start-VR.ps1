@@ -11,6 +11,8 @@ param(
     [switch]$OriginalPresentation,
     [ValidateSet(1,2,4,8)][int]$DrawDistance = 8,
     [switch]$OriginalDrawDistance,
+    [switch]$OriginalAircraftSize,
+    [switch]$LegacyWaterPoints,
     [switch]$NoWaterDetail,
     [switch]$NoShorelines,
     [switch]$NoWakes,
@@ -36,6 +38,8 @@ if ($Software) { $gameArgs += '--vr-software' }
 if ($OriginalPresentation) { $gameArgs += '--vr-no-presentation' }
 $gameArgs += @('--vr-draw-distance', $DrawDistance.ToString())
 if ($OriginalDrawDistance) { $gameArgs += '--vr-original-distance' }
+if ($OriginalAircraftSize) { $gameArgs += '--vr-original-aircraft-size' }
+if ($LegacyWaterPoints) { $gameArgs += '--vr-legacy-water-points' }
 if ($NoWaterDetail) { $gameArgs += '--vr-no-water-detail' }
 if ($NoShorelines) { $gameArgs += '--vr-no-shorelines' }
 if ($NoWakes) { $gameArgs += '--vr-no-wakes' }

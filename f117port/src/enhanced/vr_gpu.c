@@ -20,10 +20,11 @@ static VrGpuFrame *current;
 static double depth_plane[3],band_plane[3];
 static double band_gradient[2][2];
 static unsigned surface;
+static double object_centre[3],object_scale=1;
 static void reset_face(void) { memset(depth_plane,0,sizeof depth_plane);memset(band_plane,0,sizeof band_plane);surface=0; }
 bool vr_gpu_active(void) { return current != NULL; }
 void vr_gpu_begin(VrGpuFrame *f) { current=f;f->count=f->batch_count=f->background_count=0;f->polygons=f->invalid=f->spills=f->water_faces=f->surface_faces=0;f->fine=enh.dither_fine;nf=0;memset(&f->presentation,0,sizeof f->presentation);reset_face();
-    f->aircraft_triangles=f->aircraft_dots=0;
+    f->aircraft_triangles=f->aircraft_dots=f->water_speckles=0;object_scale=1;
     for(int i=0;i<8;i++)for(int j=0;j<2;j++){f->ship_min[i][j]=1e30;f->ship_max[i][j]=-1e30;}
 }
 void vr_gpu_end(void) { current=NULL;nf=0; }
@@ -142,8 +143,26 @@ static void polygon(P2 *p,int n,uint16_t colour) {
     }
     triangle(p[ids[0]],p[ids[1]],p[ids[2]],colour);
 }
+void vr_gpu_object(void) {
+    object_scale=1;
+    if(!vr_gpu_active()||!vr_visibility_actor_active()||!vr_options.aircraft_visibility)return;
+    for(int k=0;k<3;k++)object_centre[k]=DSSL(0x7CA2+4*k)/65536.0+vr_camera_residual(k);
+    /* A gradual 1x..2x boost over 800..3500 physical metres. Model-file radii
+     * vary too much between LODs to use them as a visible-silhouette minimum. */
+    /* Match the physical camera space used for atmospheric depth. Range, not
+     * forward depth, keeps the size steady as the pilot turns their head. */
+    double x=object_centre[0],y=object_centre[1]/.75,z=object_centre[2];
+    double distance=sqrt(x*x+y*y+z*z)*(.03/vr_near_depth());
+    double t=fmin(1,fmax(0,(distance-800)/2700));
+    object_scale=1+t*t*(3-2*t);
+}
 void vr_gpu_vertex(unsigned k,double x,double y,double z) {
     x+=vr_camera_residual(0);y+=vr_camera_residual(1);z+=vr_camera_residual(2);
+    if(vr_visibility_actor_active()&&object_scale>1) {
+        x=object_centre[0]+(x-object_centre[0])*object_scale;
+        y=object_centre[1]+(y-object_centre[1])*object_scale;
+        z=object_centre[2]+(z-object_centre[2])*object_scale;
+    }
     if(k<256)points[k]=(P3){x,y,z};
     VrGpuPresentation *p=&current->presentation;
     double scale=.03/vr_near_depth(),cam[3]={x*scale,-y*scale/.75,-z*scale},world[2]={0,0};
@@ -265,6 +284,12 @@ void vr_gpu_line(unsigned rec,uint16_t colour) {
     P3 a=points[links[k][0]],b=points[links[k][1]];
     const double near=vr_near_depth();
     if(a.z<near&&b.z<near)return;
+    /* Original sea speckles have seven vertices, no planes, and seven self
+     * edges. Recognize the shared pattern rather than theatre-specific IDs. */
+    if(vr_options.presentation&&!vr_options.legacy_water_points&&DSB(0x4957)==1&&DSS(0x7D2C)==7&&DSS(0x7D2A)==0) {
+        bool dots=true;for(int i=0;i<7;i++)if(links[i][0]!=links[i][1])dots=false;
+        if(dots){current->water_speckles++;return;}
+    }
     if(a.z<near){double t=(near-a.z)/(b.z-a.z);a=(P3){a.x+t*(b.x-a.x),a.y+t*(b.y-a.y),near};}
     if(b.z<near){double t=(near-b.z)/(a.z-b.z);b=(P3){b.x+t*(a.x-b.x),b.y+t*(a.y-b.y),near};}
     if(vr_visibility_actor_active())surface|=VR_SURFACE_AIRCRAFT;

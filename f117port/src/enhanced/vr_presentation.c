@@ -60,7 +60,9 @@ unsigned vr_presentation_queue_record(int i,unsigned original) {
 }
 static struct { bool set;int32_t x,y;int altitude,heading; } test_camera;
 static int test_aircraft_distance;
+static int test_motion_step=-1,test_motion_axis;
 void vr_presentation_test_aircraft(int distance) { test_aircraft_distance=distance; }
+void vr_presentation_test_motion(int step,int axis) { test_motion_step=step;test_motion_axis=axis; }
 void vr_presentation_test_camera(int32_t x,int32_t y,int altitude,int heading) {
     test_camera.set=true;test_camera.x=x;test_camera.y=y;test_camera.altitude=altitude;test_camera.heading=heading;
 }
@@ -69,6 +71,14 @@ void vr_presentation_test_scene(void) {
         DSW(0x2DEE)=DSW(0x2DF0)=DSW(0x2DF2)=0;DSW(0x2DF4)=3000;
         DSW(0xDED0)=1;unsigned u=0xC140;memset(DSP(u),0,36);
         DSL(u+6)=DSL(0xBA10);DSL(u+10)=0x100000-DSL(0xC02A)-test_aircraft_distance;
+        if(test_motion_step>=0) {
+            uint32_t x=DSL(0xBA10)&~63u,north=(0x100000-DSL(0xC02A))&~63u;
+            DSL(0xBA10)=x+(test_motion_axis==0?test_motion_step:0);
+            DSL(0xC02A)=0x100000-north-(test_motion_axis==1?test_motion_step:0);
+            DSW(0xC0A4)=(uint16_t)((DSL(0xBA10)+16)>>5);
+            DSW(0xC0B2)=(uint16_t)(0x8000-((DSL(0xC02A)+16)>>5));
+            DSL(u+6)=x+128;DSL(u+10)=north-test_aircraft_distance;
+        }
         DSW(u)=(uint16_t)(DSL(u+6)>>5);DSW(u+2)=(uint16_t)(DSL(u+10)>>5);
         DSW(u+4)=3016;DSW(u+0x14)=1;DSW(u+0x16)=3;DSW(u+0x18)=200;
         return;

@@ -22,6 +22,7 @@ int vr_presentation_selftest(void);
 void vr_presentation_test_scene(void); /* benchmark-only coast camera, inside the saved-state eye pass */
 void vr_presentation_test_camera(int32_t x,int32_t y,int altitude,int heading);
 void vr_presentation_test_aircraft(int distance);
+void vr_presentation_test_motion(int step,int axis);
 #ifdef __cplusplus
 }
 #endif

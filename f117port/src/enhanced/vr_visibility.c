@@ -27,8 +27,10 @@ bool vr_visibility_model(uint16_t model,int32_t x,int32_t y,int16_t alt,int16_t 
     /* Site-cell wrapping resolves the original y32 datum before the old s16
      * truncation. The low fractional bits and original model LOD scale remain. */
     uint32_t cx=DSL(0xBA10),north=0x100000-DSL(0xC02A);
-    int64_t dx=(int16_t)((uint32_t)x/32-DSW(0xC0A4))*32LL+((uint32_t)x&31)-(cx&31);
-    int64_t dn=(int16_t)((uint32_t)y/32-DSW(0xC0B2))*32LL+((uint32_t)y&31)-(north&31);
+    /* Interpolated camera cells are rounded, but these fractional remainders
+     * belong to floor cells. Mixing them introduced a 32-unit position jump. */
+    int64_t dx=(int16_t)((uint32_t)x/32-(cx>>5))*32LL+((uint32_t)x&31)-(cx&31);
+    int64_t dn=(int16_t)((uint32_t)y/32-(north>>5))*32LL+((uint32_t)y&31)-(north&31);
     int16_t dz=(int16_t)(alt-DSS(0x2DF4));
     int sh=lod-(DSB(0x294B)==0?3:2);double units=ldexp(1.0,sh);
     vr_object_units(units);
@@ -90,19 +92,36 @@ void vr_visibility_load(unsigned rec) { current=slots[(rec-0x49F0)/22];actor=cur
 void vr_visibility_actor_candidate(int id) {
     if(!active()||id<0||id>=64||!enh_hr_pt.valid)return;
     actors[id].seen=true;actors[id].x=enh_hr_pt.x;actors[id].y=enh_hr_pt.y;
+    if(vr_options.aircraft_visibility) {
+        unsigned u=0xC140+36*id;uint32_t cx=DSL(0xBA10),north=0x100000-DSL(0xC02A);
+        uint32_t x=DSL(u+6),y=DSL(u+10);
+        double point[3]={(int16_t)((x>>5)-(cx>>5))*32.0+(x&31)-(cx&31),
+            DSS(u+4)-16-DSS(0x2DF4)+.5,
+            (int16_t)((y>>5)-(north>>5))*32.0+(y&31)-(north&31)},rx,ry;
+        if(vr_project_relative(point,&rx,&ry)) {
+            actors[id].x=enh_hr.cx+256*enh_hr.n*rx;actors[id].y=enh_hr.cy-192*enh_hr.n*ry;
+        }
+    }
 }
-void vr_visibility_actor_dot(int id) { if(active()&&id>=0&&id<64){actors[id].dot=true;actor=id;} }
+bool vr_visibility_actor_dot(int id) {
+    if(active()&&id>=0&&id<64){if(vr_options.aircraft_visibility)return true;actors[id].dot=true;actor=id;}
+    return false;
+}
 void vr_visibility_actor_begin(int id) { actor=active()&&id>=0&&id<64?id:-1; }
 void vr_visibility_actor_end(void) { actor=-1; }
 bool vr_visibility_actor_active(void) { return active()&&actor>=0; }
 void vr_visibility_triangle(double area) { if(vr_visibility_actor_active())actors[actor].area+=area; }
 void vr_visibility_finish(void) {
     actor=-1;if(!active())return;
-    /* Coarse aircraft can be almost edge-on: submitted triangles then cover
-     * no eye samples. Retain the original point until the silhouette has a
-     * minimum projected footprint (about one pixel at a 2K eye resolution). */
-    for(int i=0;i<64;i++)if(actors[i].seen&&!actors[i].dot&&actors[i].area<1.0/(2048.0*2048.0)) {
-        double r=enh_hr.n*.5;
+    /* Keep a visibility floor for edge-on silhouettes. Shrink the point
+     * smoothly as the mesh gains several pixels of projected coverage. */
+    for(int i=0;i<64;i++)if(actors[i].seen&&!actors[i].dot) {
+        double fade=0,area=actors[i].area;
+        if(vr_options.aircraft_visibility) {
+            double t=fmin(1,fmax(0,(area-1e-6)/5e-6));fade=1-t*t*(3-2*t);
+        } else fade=area<1.0/(2048.0*2048.0)?1:0;
+        if(fade<=0)continue;
+        double r=enh_hr.n*.5*fade;
         actor=i;
         vr_gpu_rect(actors[i].x-r,actors[i].y-r,actors[i].x+r,actors[i].y+r,15);vr_gpu_unit_dot();
     }

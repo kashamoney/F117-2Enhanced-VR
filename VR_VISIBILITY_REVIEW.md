@@ -1,5 +1,8 @@
 # VR input pacing and extended visibility — S8.18
 
+The subsequent [S8.19 aircraft/water update](VR_AIRCRAFT_REVIEW.md) corrects a
+camera-cell position jump, removes sea speckles and improves silhouette visibility.
+
 Eight times the original render range is now the default in `Carrier-VR.cmd`
 and `Play-VR.cmd`. Use `-DrawDistance 4` for the lighter setting, or select
 1, 2, 4 or 8. Resolution and the accepted cockpit are unchanged.

@@ -835,7 +835,7 @@ public:
         if(!vr_options.dump||dumped||!vr_scene_initialized())return;
         if(SDL_getenv("F117_VR_VISIBILITY_TEST")) {
             FILE *file=std::fopen("vr-visibility.csv","w");if(!file)throw std::runtime_error("Visibility trace file");
-            std::fprintf(file,"distance_units,metres,model_triangles,dots,invalid,rendered_pixels,isolated_pixels,tagged_vertices,in_view_vertices\n");
+            std::fprintf(file,"distance_units,metres,model_triangles,dots,invalid,rendered_pixels,isolated_pixels,tagged_vertices,in_view_vertices,model_width\n");
             VrPose pose{{0,0,0,1},{0,0,0}};
             for(int d=256;d<=131072;d+=256) {
                 vr_presentation_test_aircraft(d);
@@ -854,9 +854,25 @@ public:
                     renderWorld(0,fovs[0],ew,eh);readWorld(world[0],name);
                 }
                 unsigned tagged=0,inview=0;for(size_t k=0;k<g.count;k++)if(g.vertices[k].flags&VR_SURFACE_AIRCRAFT){tagged++;if(std::abs(g.vertices[k].x)<1&&std::abs(g.vertices[k].y)<1)inview++;}
-                std::fprintf(file,"%d,%.3f,%u,%u,%u,%d,%d,%u,%u\n",d,d*.5*(512000.0/1048576)*vr_options.world_scale,g.aircraft_triangles,g.aircraft_dots,g.invalid,coverage,isolated,tagged,inview);
+                double lo=1e9,hi=-1e9;for(size_t k=0;k<g.count;k++)if((g.vertices[k].flags&(VR_SURFACE_AIRCRAFT|VR_SURFACE_LIGHT))==VR_SURFACE_AIRCRAFT){lo=std::min(lo,double(g.vertices[k].x));hi=std::max(hi,double(g.vertices[k].x));}
+                std::fprintf(file,"%d,%.3f,%u,%u,%u,%d,%d,%u,%u,%.9f\n",d,d*.5*(512000.0/1048576)*vr_options.world_scale,g.aircraft_triangles,g.aircraft_dots,g.invalid,coverage,isolated,tagged,inview,hi>=lo?hi-lo:0);
             }
-            std::fclose(file);vr_presentation_test_aircraft(0);
+            std::fclose(file);
+            file=std::fopen("vr-aircraft-motion.csv","w");if(!file)throw std::runtime_error("Aircraft motion trace");
+            std::fprintf(file,"distance_units,axis,step,centre_x,centre_y,width,vertices\n");
+            for(int distance:{4096,65536})for(int axis=0;axis<2;axis++)for(int step=0;step<64;step++) {
+                vr_presentation_test_aircraft(distance);
+                vr_presentation_test_motion(step,axis);
+                vr_gpu_begin(&geometry[0]);bool ok=enh_vr_render(&pose,nullptr,w,h);vr_gpu_end();
+                if(!ok)throw std::runtime_error("Aircraft motion scene");
+                double lo[2]={1e9,1e9},hi[2]={-1e9,-1e9};unsigned count=0;
+                for(size_t k=0;k<geometry[0].count;k++)if(geometry[0].vertices[k].flags&VR_SURFACE_AIRCRAFT) {
+                    auto &v=geometry[0].vertices[k];lo[0]=std::min(lo[0],double(v.x));lo[1]=std::min(lo[1],double(v.y));
+                    hi[0]=std::max(hi[0],double(v.x));hi[1]=std::max(hi[1],double(v.y));count++;
+                }
+                std::fprintf(file,"%d,%d,%d,%.9f,%.9f,%.9f,%u\n",distance,axis,step,(lo[0]+hi[0])*.5,(lo[1]+hi[1])*.5,hi[0]-lo[0],count);
+            }
+            std::fclose(file);vr_presentation_test_motion(-1,0);vr_presentation_test_aircraft(0);
             vr_gpu_begin(&geometry[0]);bool restored=enh_vr_render(&poses[0],nullptr,w,h);vr_gpu_end();
             if(!restored)throw std::runtime_error("Restore after visibility sweep");
             int ew=preview?(vr_options.resolution?vr_options.resolution:1920):swaps[0].w;
@@ -906,10 +922,10 @@ public:
                 std::snprintf(name,sizeof name,"vr-presentation-%d.json",k);
                 if(FILE *file=std::fopen(name,"w")) {
                     const auto &g=geometry[0];const auto &p=g.presentation;
-                    std::fprintf(file,"{\"effects\":%.0f,\"distance\":%.0f,\"water_faces\":%u,\"surface_faces\":%u,\"overflow_records\":%u,\"ships\":%.0f,\"sea\":[%.6f,%.6f,%.6f,%.6f],\"view\":[",
-                        p.params[0],p.params[2],g.water_faces,g.surface_faces,g.spills,p.params[1],p.sea[0],p.sea[1],p.sea[2],p.sea[3]);
+                    std::fprintf(file,"{\"effects\":%.0f,\"distance\":%.0f,\"water_faces\":%u,\"surface_faces\":%u,\"overflow_records\":%u,\"removed_water_points\":%u,\"ships\":%.0f,\"sea\":[%.6f,%.6f,%.6f,%.6f],\"view\":[",
+                        p.params[0],p.params[2],g.water_faces,g.surface_faces,g.spills,g.water_speckles,p.params[1],p.sea[0],p.sea[1],p.sea[2],p.sea[3]);
                     for(int r=0;r<3;r++)for(int c=0;c<3;c++)std::fprintf(file,"%s%.7f",r||c?",":"",p.view[r][c]);
-                    std::fprintf(file,"],\"origin\":[%.6f,%.6f,%.6f],\"source_camera\":[",p.origin[0],p.origin[1],p.origin[2]);
+                    std::fprintf(file,"],\"triangles\":%zu,\"origin\":[%.6f,%.6f,%.6f],\"source_camera\":[",g.count/3,p.origin[0],p.origin[1],p.origin[2]);
                     for(int c=0;c<8;c++)std::fprintf(file,"%s%u",c?",":"",g.source_camera[c]);
                     std::fprintf(file,"],\"ship_bounds\":[");
                     for(int i=0;i<(int)p.params[1];i++)std::fprintf(file,"%s[%.3f,%.3f,%.3f,%.3f,%.0f,%.0f]",i?",":"",p.ships[i][0],p.ships[i][1],p.shipshape[i][0],p.shipshape[i][1],p.shipshape[i][2],p.shipshape[i][3]);

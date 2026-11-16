@@ -25,7 +25,7 @@ typedef struct {
     bool fine;
     VrGpuPresentation presentation;
     unsigned spills, water_faces, surface_faces;
-    unsigned aircraft_triangles,aircraft_dots;
+    unsigned aircraft_triangles,aircraft_dots,water_speckles;
     uint32_t source_camera[8]; /* raw coordinate evidence for diagnostic captures */
     double ship_min[8][2],ship_max[8][2];
 } VrGpuFrame;
@@ -37,6 +37,7 @@ void vr_gpu_scene(int heading,int pitch,int roll,const double position[3],double
 void vr_gpu_unit_dot(void);
 void vr_gpu_free(VrGpuFrame *frame);
 void vr_gpu_vertex(unsigned k, double x, double y, double z);
+void vr_gpu_object(void);
 void vr_gpu_edge(unsigned rec, unsigned a, unsigned b);
 void vr_gpu_add_edge(unsigned rec);
 void vr_gpu_finish(uint16_t colour);

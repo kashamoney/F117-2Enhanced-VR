@@ -4,6 +4,7 @@
  * adjacency (part slots 7B1C.. run into the eye vectors 7C3C exactly as in the original, spec "Part limit"). */
 #include <string.h>
 #include "enhanced/vr_visibility.h" /* ENH: extended GPU frustum */
+#include "enhanced/vr_gpu.h" /* ENH: readable distant silhouettes */
 
 #include "render3d/r3d.h"
 #include "enhanced/sandbox.h"      /* ENH: S2.4 */
@@ -470,6 +471,7 @@ static u16 object_head(u16 obj, s16 x, s16 y, s16 z, u16 mat9, bool frustum_alwa
     do { md = ESW(si); mdl = ESW(si + 2); si = (u16)(si + 4); } while (lod_depth > md);
     si = mdl;
     u16 radius = ESW(si);
+    vr_gpu_object(); /* ENH: render-only distant silhouette scale */
     si = (u16)(si + 2);
     if (!(radius > az)) DSB(0x7D5C) = 0x80;
     if ((frustum_always || DSB(0x7D5E) == 0) && !r3d_frustum_test((s16)radius)) { DSB(0x7D5C) = 0x80; return 0; }

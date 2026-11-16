@@ -39,6 +39,8 @@ def main():
     p.add_argument('--pose', help='deterministic test pose: frame,heading,altitude_feet,bank')
     p.add_argument('--coast-fixture', action='store_true', help='render-only camera beside a coast found in the original terrain; does not move the simulated aircraft')
     p.add_argument('--visibility-test', action='store_true', help='trace an original aircraft model/dot representation through distance')
+    p.add_argument('--original-aircraft-size', action='store_true', help='compare the original aircraft size and point handoff')
+    p.add_argument('--legacy-water-points', action='store_true', help='restore the original sea speckles for a controlled comparison')
     p.add_argument('--without', action='append', default=[], choices=('water-detail','shorelines','wakes','atmosphere','landing-detail'), help='disable one presentation effect for controlled comparisons')
     p.add_argument('--samples', type=int, choices=(1,2,4,8), help='limit GPU MSAA for before/after comparisons (default 8)')
     p.add_argument('--headset', action='store_true')
@@ -111,6 +113,10 @@ def main():
         cmd += ['--vr-no-presentation']
     if a.original_distance:
         cmd += ['--vr-original-distance']
+    if a.original_aircraft_size:
+        cmd += ['--vr-original-aircraft-size']
+    if a.legacy_water_points:
+        cmd += ['--vr-legacy-water-points']
     if a.draw_distance is not None:
         cmd += ['--vr-draw-distance', str(a.draw_distance)]
     if a.smooth_shading:

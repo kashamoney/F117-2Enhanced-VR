@@ -143,8 +143,8 @@ void r3d_draw_world_objects(void)
         DSW(0xDE92) = (u16)(DSS(0xDE92) >> hi);
         vr_visibility_actor_candidate(i); /* ENH: retain the projected far marker */
         if (DSS(0xDE92) <= vr_presentation_dot(-0x20)) { /* ENH: render-only model-to-dot range */
+            if(vr_visibility_actor_dot(i))continue; /* ENH: precise marker with a gradual model handoff */
             vr_gpu_unit_dot(); /* ENH: representation trace */
-            vr_visibility_actor_dot(i); /* ENH: this unit already has a visible representation */
             gfx_set_fg(0x0F);
             if (enh_shadow_on) enh_dot_begin();   /* ENH: S3.1, the dot at N x */
             hud_line_view(DSS(0x49E0), DSS(0x49E8), DSS(0x49E0), DSS(0x49E8));

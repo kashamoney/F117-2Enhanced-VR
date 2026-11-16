@@ -153,13 +153,21 @@ edge-on model is too small to cover a pixel. A host render queue retains scenery
 beyond the original 50-record limit. Terrain fades into the distant haze;
 targeting, detection and weapon ranges remain the original's.
 
+Distant aircraft grow gradually up to twice their normal visual size. A small
+point shrinks away as the silhouette gains readable coverage, keeping the
+handoff visible. Nearby aircraft retain their normal size. `-OriginalAircraftSize`
+restores the previous size/point treatment for comparison. Camera-cell rounding
+has also been corrected to prevent moving aircraft from jumping at cell boundaries.
+
 Use `Carrier-VR.cmd -DrawDistance 4` for a lighter 4x setting, or pass
 `-DrawDistance 1`, `2`, `4` or `8` to either VR launcher. The extended coordinates,
 model/point handoff and held-thrust timing checks are documented in
 [`VR_VISIBILITY_REVIEW.md`](VR_VISIBILITY_REVIEW.md).
 
 Sparse blue wavelets stay on the sea in world coordinates and fade with distance
-and pixel footprint. Coast edges and restrained wash around original ships help
+and pixel footprint. The original seven-dot sea scenery is removed; the newer
+water surface replaces it. `-LegacyWaterPoints` restores the dots for comparison.
+Coast edges and restrained wash around original ships help
 judge the surface. Ships are stationary scenery, so they get waterline wash rather
 than long moving wakes. Sky/ground bands and atmospheric shading interpolate the
 original palette colours. Existing landing paint gets a small contrast lift, and
@@ -180,6 +188,8 @@ Each addition has an independent switch:
 | `-OriginalPresentation` | `--vr-no-presentation` |
 | `-DrawDistance 8` (default; 1, 2, 4, 8) | `--vr-draw-distance 8` |
 | `-OriginalDrawDistance` | `--vr-original-distance` |
+| `-OriginalAircraftSize` | `--vr-original-aircraft-size` |
+| `-LegacyWaterPoints` | `--vr-legacy-water-points` |
 | `-NoWaterDetail` | `--vr-no-water-detail` |
 | `-NoShorelines` | `--vr-no-shorelines` |
 | `-NoWakes` | `--vr-no-wakes` |

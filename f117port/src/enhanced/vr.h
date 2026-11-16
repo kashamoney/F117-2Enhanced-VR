@@ -27,7 +27,7 @@ typedef struct {
     int draw_distance;        /* original range multiplier: 1, 2, 4 or 8 */
     double world_scale;       /* physical metres per game metre */
     bool cockpit, diagnostic, selftest, dump, software, gpu_check;
-    bool presentation, distance;
+    bool presentation, distance, aircraft_visibility, legacy_water_points;
     unsigned effects;
     char scene_test[1024];
 } VrOptions;
@@ -63,6 +63,7 @@ void vr_translate_object(void); /* preserve fractional feet in the 16.16 camera 
 bool vr_eye_active(void);
 double vr_near_depth(void); /* camera depth of a physical 3 cm near plane */
 double vr_camera_residual(int axis);
+bool vr_project_relative(const double point[3],double *x,double *y);
 bool enh_vr_render(const VrPose *eye, uint32_t *out, int w, int h);
 bool enh_vr_ready(void);
 bool vr_scene_initialized(void);

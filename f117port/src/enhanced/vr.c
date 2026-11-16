@@ -17,7 +17,7 @@
 #define VR_PI 3.14159265358979323846
 #define VR_METRES_PER_UNIT (512000.0 / 1048576.0)
 VrOptions vr_options = { .resolution = 0, .world_scale = 1.0, .cockpit = true,
-    .presentation=true, .distance=true, .draw_distance=8, .effects=VR_WATER|VR_SHORE|VR_WAKES|VR_ATMOSPHERE|VR_LANDING };
+    .presentation=true, .distance=true, .aircraft_visibility=true, .draw_distance=8, .effects=VR_WATER|VR_SHORE|VR_WAKES|VR_ATMOSPHERE|VR_LANDING };
 void vr_clock_publish(VrClock *clock,uint64_t now,uint64_t flip,uint64_t period) {
     if(!period)period=100000000;
     /* A stale flip belongs to the pre-pause frame, not the new snapshot. */
@@ -40,6 +40,8 @@ int vr_parse_arg(int argc, char **argv, int i)
     const char *a = argv[i];
     if (!strcmp(a,"--vr-no-presentation")) { vr_options.presentation=false;return 1; }
     if (!strcmp(a,"--vr-original-distance")) { vr_options.distance=false;return 1; }
+    if (!strcmp(a,"--vr-original-aircraft-size")) { vr_options.aircraft_visibility=false;return 1; }
+    if (!strcmp(a,"--vr-legacy-water-points")) { vr_options.legacy_water_points=true;return 1; }
     if (!strcmp(a,"--vr-draw-distance")&&i+1<argc) {
         int n=atoi(argv[i+1]);if((n!=1&&n!=2&&n!=4&&n!=8)||strlen(argv[i+1])!=1){fputs("--vr-draw-distance: expected 1, 2, 4 or 8\n",stderr);exit(2);}
         vr_options.draw_distance=n;vr_options.distance=true;return 2;
@@ -168,6 +170,13 @@ void vr_translate_object(void)
         if(bounded<-0x6FFF0000LL)bounded=-0x6FFF0000LL;
         DSSL(0x7CA2+4*k)=(s32)bounded;camera_residual[k]=(full-bounded)/65536.0;
     }
+}
+bool vr_project_relative(const double point[3],double *x,double *y) {
+    if(!eye_active)return false;
+    double camera[3]={0,0,0};
+    for(int k=0;k<3;k++)for(int j=0;j<3;j++)camera[k]+=(point[j]-eye_delta[j])*DSS(0x7AF8+6*j+2*k);
+    if(camera[2]<=0)return false;
+    *x=camera[0]/camera[2];*y=camera[1]/camera[2];return true;
 }
 void vr_capture_desktop(const uint32_t *src,int w,int h,uint32_t *out,int scale)
 {

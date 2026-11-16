@@ -48,6 +48,7 @@ def main():
     meta = [json.loads((enabled/f'vr-presentation-{k}.json').read_text()) for k in range(11)]
     assert all(m['effects'] == 31 and m['distance'] == 8 for m in meta)
     assert max(m['water_faces'] for m in meta) > 0 and max(m['ships'] for m in meta) > 0
+    assert max(m['removed_water_points'] for m in meta)>0, 'Legacy sea speckles were not removed'
     # Head rotation must not choose a different rounded terrain LOD sea plane.
     assert max(m['sea'][3] for m in meta[:10])-min(m['sea'][3] for m in meta[:10]) < 1e-4
 
@@ -78,6 +79,11 @@ def main():
         results['without-'+feature].update(changed_pixels=changes, outside_water=outside)
         print(f'  {feature}: {changes} changed pixels; outside water: {outside}', flush=True)
 
+    legacy=run('legacy-water-points','--legacy-water-points')
+    for k,m in enumerate(meta):
+        lm=json.loads((legacy/f'vr-presentation-{k}.json').read_text())
+        assert lm['removed_water_points']==0
+        assert lm['triangles']==m['triangles']+m['removed_water_points']*2, 'Water cleanup changed more than the seven-point models'
     extended = run('extended-range', '--pose', '6,0,1500,0')
     original = run('original-range', '--pose', '6,0,1500,0', '--original-distance')
     extended_meta = [json.loads((extended/f'vr-presentation-{k}.json').read_text()) for k in range(11)]
