@@ -118,6 +118,7 @@ void hr_night_dequeue(int slot) { st.obj = slot >= 0 && slot < 50 ? st.queued[sl
 /* r3d_face_list: a condition on the lights variables (10, 11) holds for the next element; the element begins (or is skipped) */
 void hr_night_cond(u16 v) { if (v == 10 || v == 11) st.cond = 1; }
 void hr_night_elem(void) { st.light = st.cond; st.cond = 0; }
+bool hr_light_element(void) { return st.light!=0; }
 
 /* the mode of the object fill (line = false) or line being drawn in colour c (its unshaded index) */
 int hr_night_mode(bool line, u8 c)

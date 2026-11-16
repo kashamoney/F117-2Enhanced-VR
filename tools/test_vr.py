@@ -60,7 +60,9 @@ def run(exe: Path, game: Path, directory: Path, stereo: bool, preview: bool = Fa
         command.remove("--headless")
         command += ["--vr-preview", "--vr-dump"]
         env["F117_VR_PREVIEW_HIDDEN"]="1"
-        env["F117_VGAME_FRAMES"]="6"
+        # The hidden preview runs at 60 Hz. Six virtual-clock simulation frames
+        # can finish before its first flight refresh, especially after shader compilation.
+        env["F117_VGAME_FRAMES"]="40"
         env.pop("F117_VGAME_DIVE",None)
     proc = subprocess.run(command, cwd=directory, env=env, capture_output=True, text=True, timeout=600 if resolution>=4096 else 180)
     (directory / "stdout.txt").write_text(proc.stdout, encoding="utf-8")

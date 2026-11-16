@@ -16,6 +16,7 @@
 #include <SDL3/SDL.h>
 #include "enhanced/vr.h"
 #include "enhanced/vr_gpu.h"
+#include "enhanced/vr_presentation.h"
 #include "enhanced/vr_cockpit.h"
 #include "enhanced/vr_canopy.h"
 #include <algorithm>
@@ -53,31 +54,7 @@ struct WorldTarget {
     ComPtr<ID3D11ShaderResourceView> srv;
     int w=0,h=0;
 };
-const char *worldShader=R"HLSL(
-cbuffer Params : register(b0) {float4 source;float4 fov;float4 mode;};
-struct I {float2 ray:POSITION;uint colour:COLOR0;};
-struct O {float4 p:SV_POSITION;nointerpolation uint colour:COLOR0;};
-O WV(I i) {O o;o.p=float4((2*i.ray.x-fov.y-fov.x)/(fov.y-fov.x),
-    (2*i.ray.y-fov.z-fov.w)/(fov.z-fov.w),0,1);o.colour=i.colour;return o;}
-uint WP(O i):SV_TARGET {
-    uint lo=i.colour&255,hi=i.colour>>8;
-    uint parity=(uint(i.p.x)^uint(i.p.y))&1;
-    if(mode.z<0.5) {
-        float2 ray=float2(lerp(fov.x,fov.y,i.p.x/source.x),lerp(fov.z,fov.w,i.p.y/source.y));
-        parity=(int(floor(159+ray.x*256))^int(floor(100-ray.y*192)))&1;
-    }
-    if(hi==252 && parity==0) discard;
-    return hi<251 && parity!=0 ? hi:lo;
-}
-Texture2DMS<uint,WORLD_SAMPLES> idxMS:register(t0);
-Texture2D<float4> palette:register(t1);
-Texture2D<uint> idx:register(t2);
-float4 LookupMS(float4 p:SV_POSITION):SV_TARGET {
-    float4 c=0;[unroll]for(int k=0;k<WORLD_SAMPLES;k++)c+=palette.Load(int3(idxMS.Load(int2(p.xy),k),0,0));
-    return c/WORLD_SAMPLES;
-}
-float4 Lookup(float4 p:SV_POSITION):SV_TARGET {return palette.Load(int3(idx.Load(int3(p.xy,0)),0,0));}
-)HLSL";
+#include "enhanced/vr_world_shader.h"
 const char *shader=R"HLSL(
 cbuffer Params : register(b0) {float4 source;float4 fov;float4 mode;};
 Texture2D image : register(t0); SamplerState imageSampler : register(s0);
@@ -138,9 +115,10 @@ public:
     WorldTarget worldTarget[2];
     VrGpuFrame geometry[2]{};
     ComPtr<ID3D11VertexShader> worldVS;
-    ComPtr<ID3D11PixelShader> worldPS,lookupPS;
+    ComPtr<ID3D11PixelShader> worldPS,lookupPS,inspectPS;
     ComPtr<ID3D11InputLayout> worldLayout;
-    ComPtr<ID3D11Buffer> worldVB;
+    ComPtr<ID3D11Buffer> worldVB,presentationCB;
+    DXGI_FORMAT worldFormat=vr_options.presentation?DXGI_FORMAT_R32_UINT:DXGI_FORMAT_R8_UINT;
     std::array<ComPtr<ID3D11BlendState>,3> logic;
     size_t worldCapacity=0,uploadBytes=0;
     unsigned samples=1;
@@ -266,12 +244,16 @@ public:
         D3D11_FEATURE_DATA_D3D11_OPTIONS options{};
         dx(device->CheckFeatureSupport(D3D11_FEATURE_D3D11_OPTIONS,&options,sizeof options),"world capabilities");
         if(!options.OutputMergerLogicOp)throw std::runtime_error("GPU lacks palette logic operations; use --vr-software");
+        D3D11_FEATURE_DATA_FORMAT_SUPPORT2 support{worldFormat,0};
+        dx(device->CheckFeatureSupport(D3D11_FEATURE_FORMAT_SUPPORT2,&support,sizeof support),"world integer format support");
+        if(!(support.OutFormatSupport2&D3D11_FORMAT_SUPPORT2_OUTPUT_MERGER_LOGIC_OP))
+            throw std::runtime_error("GPU lacks logic operations for the presentation format; use --vr-no-presentation");
         // Diagnostic cap lets the same frozen scene reproduce lower coverage.
         unsigned cap=SDL_getenv("F117_VR_SAMPLES")?unsigned(std::clamp(SDL_atoi(SDL_getenv("F117_VR_SAMPLES")),1,8)):8;
         for(unsigned candidate : {8u,4u,2u}) {
             if(candidate>cap)continue;
             UINT quality=0;
-            if(SUCCEEDED(device->CheckMultisampleQualityLevels(DXGI_FORMAT_R8_UINT,candidate,&quality))&&quality){samples=candidate;break;}
+            if(SUCCEEDED(device->CheckMultisampleQualityLevels(worldFormat,candidate,&quality))&&quality){samples=candidate;break;}
         }
         for(unsigned i=0;i<3;i++) {
             D3D11_BLEND_DESC1 b{};b.RenderTarget[0].LogicOpEnable=TRUE;
@@ -280,8 +262,8 @@ public:
             ComPtr<ID3D11BlendState1> state;dx(d1->CreateBlendState1(&b,&state),"palette logic blend");dx(state.As(&logic[i]),"world blend state");
         }
         ComPtr<ID3DBlob> v,p,l,error;
-        const std::string sampleCount=std::to_string(std::max(2u,samples));
-        const D3D_SHADER_MACRO macros[]={{"WORLD_SAMPLES",sampleCount.c_str()},{nullptr,nullptr}};
+        const std::string sampleCount=std::to_string(samples);
+        const D3D_SHADER_MACRO macros[]={{"WORLD_SAMPLES",sampleCount.c_str()},{"WORLD_MULTISAMPLE",samples>1?"1":"0"},{nullptr,nullptr}};
         auto compile=[&](const char *entry,const char *profile,ComPtr<ID3DBlob> &blob){
             error.Reset();HRESULT result=D3DCompile(worldShader,std::strlen(worldShader),"world",macros,nullptr,entry,profile,D3DCOMPILE_OPTIMIZATION_LEVEL3,0,&blob,&error);
             if(FAILED(result)&&error)note(static_cast<const char*>(error->GetBufferPointer()));
@@ -291,16 +273,23 @@ public:
         dx(device->CreateVertexShader(v->GetBufferPointer(),v->GetBufferSize(),nullptr,&worldVS),"world VS");
         dx(device->CreatePixelShader(p->GetBufferPointer(),p->GetBufferSize(),nullptr,&worldPS),"world PS");
         dx(device->CreatePixelShader(l->GetBufferPointer(),l->GetBufferSize(),nullptr,&lookupPS),"palette PS");
+        compile("Inspect","ps_5_0",l);
+        dx(device->CreatePixelShader(l->GetBufferPointer(),l->GetBufferSize(),nullptr,&inspectPS),"surface inspection PS");
         D3D11_INPUT_ELEMENT_DESC in[]={
             {"POSITION",0,DXGI_FORMAT_R32G32_FLOAT,0,0,D3D11_INPUT_PER_VERTEX_DATA,0},
-            {"COLOR",0,DXGI_FORMAT_R32_UINT,0,8,D3D11_INPUT_PER_VERTEX_DATA,0}};
-        dx(device->CreateInputLayout(in,2,v->GetBufferPointer(),v->GetBufferSize(),&worldLayout),"world input");
+            {"COLOR",0,DXGI_FORMAT_R32_UINT,0,8,D3D11_INPUT_PER_VERTEX_DATA,0},
+            {"TEXCOORD",0,DXGI_FORMAT_R32_FLOAT,0,12,D3D11_INPUT_PER_VERTEX_DATA,0},
+            {"TEXCOORD",1,DXGI_FORMAT_R32_FLOAT,0,16,D3D11_INPUT_PER_VERTEX_DATA,0},
+            {"COLOR",1,DXGI_FORMAT_R32_UINT,0,20,D3D11_INPUT_PER_VERTEX_DATA,0}};
+        dx(device->CreateInputLayout(in,5,v->GetBufferPointer(),v->GetBufferSize(),&worldLayout),"world input");
+        D3D11_BUFFER_DESC bd{};bd.ByteWidth=sizeof(VrGpuPresentation);bd.Usage=D3D11_USAGE_DYNAMIC;bd.BindFlags=D3D11_BIND_CONSTANT_BUFFER;bd.CPUAccessFlags=D3D11_CPU_ACCESS_WRITE;
+        dx(device->CreateBuffer(&bd,nullptr,&presentationCB),"presentation constants");
     }
-    void renderWorld(int index,const VrFov &f,int w,int h,bool backgroundOnly=false) {
+    void renderWorld(int index,const VrFov &f,int w,int h,bool backgroundOnly=false,bool inspect=false) {
         auto &t=worldTarget[index];auto &image=world[index];auto &g=geometry[index];
         if(t.w!=w||t.h!=h) {
             t=WorldTarget{};image=Image{};
-            D3D11_TEXTURE2D_DESC d{};d.Width=w;d.Height=h;d.MipLevels=1;d.ArraySize=1;d.Format=DXGI_FORMAT_R8_UINT;
+            D3D11_TEXTURE2D_DESC d{};d.Width=w;d.Height=h;d.MipLevels=1;d.ArraySize=1;d.Format=worldFormat;
             d.SampleDesc.Count=samples;d.BindFlags=D3D11_BIND_RENDER_TARGET|D3D11_BIND_SHADER_RESOURCE;
             dx(device->CreateTexture2D(&d,nullptr,&t.indices),"world index image");
             dx(device->CreateRenderTargetView(t.indices.Get(),nullptr,&t.rtv),"world index target");
@@ -328,6 +317,10 @@ public:
         c.source[0]=float(w);c.source[1]=float(h);c.mode[2]=g.fine?1.0f:0.0f;
         dx(context->Map(cb.Get(),0,D3D11_MAP_WRITE_DISCARD,0,&mapped),"world constants");std::memcpy(mapped.pData,&c,sizeof c);context->Unmap(cb.Get(),0);
         ID3D11Buffer *constants=cb.Get();context->VSSetConstantBuffers(0,1,&constants);context->PSSetConstantBuffers(0,1,&constants);
+        g.presentation.params[3]=vr_options.presentation?1.0f:0.0f;
+        dx(context->Map(presentationCB.Get(),0,D3D11_MAP_WRITE_DISCARD,0,&mapped),"presentation constants");
+        std::memcpy(mapped.pData,&g.presentation,sizeof g.presentation);context->Unmap(presentationCB.Get(),0);
+        ID3D11Buffer *presentation=presentationCB.Get();context->PSSetConstantBuffers(1,1,&presentation);
         UINT stride=sizeof(VrGpuVertex),offset=0;ID3D11Buffer *buffer=worldVB.Get();context->IASetVertexBuffers(0,1,&buffer,&stride,&offset);
         context->IASetInputLayout(worldLayout.Get());context->IASetPrimitiveTopology(D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
         context->VSSetShader(worldVS.Get(),nullptr,0);context->PSSetShader(worldPS.Get(),nullptr,0);
@@ -339,8 +332,11 @@ public:
         rt=t.colourRT.Get();context->OMSetRenderTargets(1,&rt,nullptr);
         // The existing full-screen layout/VS only provides clip positions here.
         fullscreen();draw(0,f,nullptr);
+        // draw() sets cockpit constants; restore the world pixel dimensions/FOV.
+        dx(context->Map(cb.Get(),0,D3D11_MAP_WRITE_DISCARD,0,&mapped),"lookup constants");
+        std::memcpy(mapped.pData,&c,sizeof c);context->Unmap(cb.Get(),0);
         ID3D11ShaderResourceView *views[3]={samples>1?t.srv.Get():nullptr,gpuPalette.srv.Get(),samples==1?t.srv.Get():nullptr};
-        context->PSSetShaderResources(0,3,views);context->PSSetShader(lookupPS.Get(),nullptr,0);context->Draw(6,0);
+        context->PSSetShaderResources(0,3,views);context->PSSetShader(inspect?inspectPS.Get():lookupPS.Get(),nullptr,0);context->Draw(6,0);
         ID3D11ShaderResourceView *none[3]={nullptr,nullptr,nullptr};context->PSSetShaderResources(0,3,none);
         rt=nullptr;context->OMSetRenderTargets(1,&rt,nullptr);
     }
@@ -615,8 +611,55 @@ public:
         std::vector<uint32_t> data(size_t(im.w)*im.h);
         for(int y=0;y<im.h;y++)std::memcpy(data.data()+size_t(y)*im.w,static_cast<const char*>(mapped.pData)+size_t(y)*mapped.RowPitch,size_t(im.w)*4);
         context->Unmap(staging.Get(),0);
-        auto *surface=SDL_CreateSurfaceFrom(im.w,im.h,SDL_PIXELFORMAT_XRGB8888,data.data(),im.w*4);
-        if(surface){SDL_SavePNG(surface,path);SDL_DestroySurface(surface);}return data;
+        if(path) {
+            auto *surface=SDL_CreateSurfaceFrom(im.w,im.h,SDL_PIXELFORMAT_XRGB8888,data.data(),im.w*4);
+            if(surface){SDL_SavePNG(surface,path);SDL_DestroySurface(surface);}
+        }
+        return data;
+    }
+    void locateCoast(int w,int h) {
+        // Locate an actual shoreline in original rendered geometry. Tile type 0
+        // is not a reliable water classifier: fine tile levels can be empty.
+        const int32_t baseX=int32_t(geometry[0].source_camera[0]),baseY=int32_t(geometry[0].source_camera[1]);
+        const double unit=.5*(512000.0/1048576)*vr_options.world_scale,tan=std::tan(pi/3);
+        VrPose down{{-std::sin(pi/4),0,0,std::cos(pi/4)},{0,0,0}};
+        VrFov f{-pi/3,pi/3,pi/3,-pi/3};const int size=512;
+        for(int ring=0;ring<=3;ring++)for(int oy=-ring;oy<=ring;oy++)for(int ox=-ring;ox<=ring;ox++) {
+            if(std::max(std::abs(ox),std::abs(oy))!=ring)continue;
+            int32_t cx=baseX+ox*131072,cy=baseY+oy*131072;
+            vr_presentation_test_camera(cx,cy,32000,0);
+            vr_gpu_begin(&geometry[0]);bool ok=enh_vr_render(&down,nullptr,w,h);vr_gpu_end();
+            if(!ok||geometry[0].invalid)continue;
+            renderWorld(0,f,size,size,false,true);auto mask=readWorld(world[0],nullptr);
+            int best=INT_MAX,bx=-1,by=0,lx=0,ly=0;
+            const int dx[]={1,-1,0,0},dy[]={0,0,1,-1};
+            for(int y=4;y<size-4;y++)for(int x=4;x<size-4;x++) {
+                if(((mask[size*y+x]>>8)&255)<240)continue;
+                for(int k=0;k<4;k++)if(((mask[size*(y+dy[k])+x+dx[k]]>>16)&255)>240) {
+                    int score=(x-size/2)*(x-size/2)+(y-size/2)*(y-size/2);
+                    if(score<best){best=score;bx=x;by=y;lx=x+dx[k];ly=y+dy[k];}
+                }
+            }
+            if(bx<0)continue;
+            auto p=geometry[0].presentation;
+            auto ground=[&](int x,int y) {
+                double ray[3]={((x+.5)/size*2-1)*tan,(1-(y+.5)/size*2)*tan,-1};
+                double d=0;for(int k=0;k<3;k++)d+=p.sea[k]*ray[k];
+                double z=-p.sea[3]/d;std::array<double,2> q{};
+                for(int k=0;k<3;k++){q[0]+=p.view[0][k]*ray[k]*z;q[1]+=p.view[2][k]*ray[k]*z;}
+                return q;
+            };
+            auto seaPoint=ground(bx,by),landPoint=ground(lx,ly);
+            double dxm=landPoint[0]-seaPoint[0],dzm=landPoint[1]-seaPoint[1],length=std::hypot(dxm,dzm);
+            dxm/=length;dzm/=length;
+            int32_t x=cx+int32_t(std::lround((seaPoint[0]-128*dxm)/unit));
+            int32_t y=cy-int32_t(std::lround((seaPoint[1]-128*dzm)/unit));
+            int heading=int(std::lround(std::atan2(dxm,-dzm)*65536/(2*pi)));
+            readWorld(world[0],"vr-coast-locator.png");
+            vr_presentation_test_camera(x,y,200,heading);
+            note("Located actual original-geometry shoreline for controlled presentation capture");return;
+        }
+        throw std::runtime_error("No rendered coast found for presentation fixture");
     }
     void dumpCockpitViews(int w,int h) {
         if(!vr_canopy_export("vr-canopy-geometry.json"))throw std::runtime_error("Cannot export inspection canopy");
@@ -789,6 +832,7 @@ public:
             std::fprintf(file,"{\"site\":%d,\"carrier\":%d,\"deck\":%d,\"aircraft\":%d,\"camera\":%d}\n",info.site,info.carrier,info.deck,info.aircraft,info.camera);std::fclose(file);
         }
         readWorld(world[0],"vr-left.png");readWorld(world[1],"vr-right.png");
+        if(SDL_getenv("F117_VR_COAST_FIXTURE"))locateCoast(w,h);
         if(SDL_getenv("F117_VR_TEMPORAL")) {
             dumpTemporalViews(w,h);
             vr_gpu_begin(&geometry[0]);bool ok=enh_vr_render(&poses[0],nullptr,w,h);vr_gpu_end();
@@ -805,13 +849,36 @@ public:
             {float(std::sin(.2)),0,0,float(std::cos(.2))},{0,0,float(std::sin(.4)),float(std::cos(.4))},
             {std::sin(-.5),0,0,std::cos(-.5)},
             vr_multiply({0,std::sin(.5),0,std::cos(.5)},{std::sin(-.35),0,0,std::cos(-.35)}),
-            vr_multiply({0,std::sin(-.5),0,std::cos(-.5)},{std::sin(-.35),0,0,std::cos(-.35)})};
-        for(int k=0;k<(validate?7:1);k++) {
+            vr_multiply({0,std::sin(-.5),0,std::cos(-.5)},{std::sin(-.35),0,0,std::cos(-.35)}),
+            vr_multiply({0,std::sin(pi/4),0,std::cos(pi/4)},{std::sin(-.35),0,0,std::cos(-.35)}),
+            vr_multiply({0,std::sin(-pi/4),0,std::cos(-pi/4)},{std::sin(-.35),0,0,std::cos(-.35)}),
+            vr_multiply({0,1,0,0},{std::sin(-.35),0,0,std::cos(-.35)}),
+            vr_multiply({0,std::sin(pi/8),0,std::cos(pi/8)},{std::sin(-.35),0,0,std::cos(-.35)})};
+        for(int k=0;k<(validate?(vr_options.presentation?11:7):1);k++) {
             VrPose check=poses[0];check.orientation=vr_multiply(check.orientation,turns[k]);
+            // Detached exterior world comparison: wash at the waterline is
+            // hidden by the deck when viewed from the seated carrier start.
+            if(k==10){check.position[0]+=300;check.position[1]+=200;check.position[2]+=250;}
             vr_gpu_begin(&geometry[0]);bool ok=enh_vr_render(&check,nullptr,w,h);vr_gpu_end();
             if(!ok||geometry[0].invalid)throw std::runtime_error("GPU validation geometry failed");
             char name[80];std::snprintf(name,sizeof name,"vr-gpu-reference-%d.png",k);
             renderWorld(0,ref,w,h);readWorld(world[0],name);
+            if(vr_options.presentation) {
+                std::snprintf(name,sizeof name,"vr-surfaces-%d.png",k);
+                renderWorld(0,ref,w,h,false,true);readWorld(world[0],name);
+                std::snprintf(name,sizeof name,"vr-presentation-%d.json",k);
+                if(FILE *file=std::fopen(name,"w")) {
+                    const auto &g=geometry[0];const auto &p=g.presentation;
+                    std::fprintf(file,"{\"effects\":%.0f,\"distance\":%.0f,\"water_faces\":%u,\"surface_faces\":%u,\"overflow_records\":%u,\"ships\":%.0f,\"sea\":[%.6f,%.6f,%.6f,%.6f],\"view\":[",
+                        p.params[0],p.params[2],g.water_faces,g.surface_faces,g.spills,p.params[1],p.sea[0],p.sea[1],p.sea[2],p.sea[3]);
+                    for(int r=0;r<3;r++)for(int c=0;c<3;c++)std::fprintf(file,"%s%.7f",r||c?",":"",p.view[r][c]);
+                    std::fprintf(file,"],\"origin\":[%.6f,%.6f,%.6f],\"source_camera\":[",p.origin[0],p.origin[1],p.origin[2]);
+                    for(int c=0;c<8;c++)std::fprintf(file,"%s%u",c?",":"",g.source_camera[c]);
+                    std::fprintf(file,"],\"ship_bounds\":[");
+                    for(int i=0;i<(int)p.params[1];i++)std::fprintf(file,"%s[%.3f,%.3f,%.3f,%.3f,%.0f,%.0f]",i?",":"",p.ships[i][0],p.ships[i][1],p.shipshape[i][0],p.shipshape[i][1],p.shipshape[i][2],p.shipshape[i][3]);
+                    std::fprintf(file,"]}\n");std::fclose(file);
+                }
+            }
             std::vector<uint32_t> software(size_t(w)*h);
             if(enh_vr_render(&check,software.data(),w,h)) {
                 auto *surface=SDL_CreateSurfaceFrom(w,h,SDL_PIXELFORMAT_XRGB8888,software.data(),w*4);

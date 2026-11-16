@@ -3,6 +3,7 @@
 #include "enhanced/enhanced.h"
 #include "enhanced/enh_canvas.h"
 #include "enhanced/vr_gpu.h"
+#include "enhanced/vr_presentation.h"
 #include "enhanced/vr_cockpit.h"
 #include "enhanced/vr_canopy.h"
 #include "mem.h"
@@ -14,7 +15,8 @@
 
 #define VR_PI 3.14159265358979323846
 #define VR_METRES_PER_UNIT (512000.0 / 1048576.0)
-VrOptions vr_options = { .resolution = 0, .world_scale = 1.0, .cockpit = true };
+VrOptions vr_options = { .resolution = 0, .world_scale = 1.0, .cockpit = true,
+    .presentation=true, .distance=true, .effects=VR_WATER|VR_SHORE|VR_WAKES|VR_ATMOSPHERE|VR_LANDING };
 void vr_clock_publish(VrClock *clock,uint64_t now,uint64_t flip,uint64_t period) {
     if(!period)period=100000000;
     /* A stale flip belongs to the pre-pause frame, not the new snapshot. */
@@ -33,6 +35,10 @@ static double eye_delta[3], object_units = 1.0, queued_units[50];
 int vr_parse_arg(int argc, char **argv, int i)
 {
     const char *a = argv[i];
+    if (!strcmp(a,"--vr-no-presentation")) { vr_options.presentation=false;return 1; }
+    if (!strcmp(a,"--vr-original-distance")) { vr_options.distance=false;return 1; }
+    const char *off[]={"--vr-no-water-detail","--vr-no-shorelines","--vr-no-wakes","--vr-no-atmosphere","--vr-no-landing-detail"};
+    for(unsigned k=0;k<5;k++)if(!strcmp(a,off[k])) { vr_options.effects&=~(1u<<k);return 1; }
     if (!strcmp(a, "--vr")) { vr_options.mode = 1; return 1; }
     if (!strcmp(a, "--vr-preview")) { vr_options.mode = 2; return 1; }
     if (!strcmp(a, "--vr-diagnostic")) { vr_options.diagnostic = true; return 1; }
@@ -59,7 +65,7 @@ int vr_parse_arg(int argc, char **argv, int i)
     return 0;
 }
 bool vr_enabled(void) { return vr_options.mode && enh_canvas_on(); }
-bool vr_use_gpu(void) { return !vr_options.software && vr_options.mode!=3 && !enh.smooth_shading && !enh.true_night; }
+bool vr_use_gpu(void) { return !vr_options.software && vr_options.mode!=3 && !enh.true_night; }
 int vr_canvas_resolution(void) { return vr_use_gpu()?1280:(vr_options.resolution?vr_options.resolution:2048); }
 int vr_canvas_height(void) { return vr_use_gpu()?800:vr_canvas_resolution(); }
 bool vr_eye_active(void) { return eye_active; }
@@ -124,6 +130,11 @@ void vr_eye_begin(const VrPose *eye, int heading, int pitch, int roll)
     object_units=1;
     for(int i=0;i<50;i++) queued_units[i]=1;
     eye_active=true;
+    if(vr_gpu_active()) {
+        int ch,cp,cr;vr_camera(eye,heading,pitch,roll,&ch,&cp,&cr);
+        VrFrameState state=enh_vr_frame_state();
+        vr_gpu_scene(ch,cp,cr,eye_delta,(state.frame+state.alpha)*.1);
+    }
 }
 bool vr_scene_initialized(void) { return DSW(0xC0AE)==2 && DSW(0x98E2)>=2; }
 void vr_scene_info(VrSceneInfo *info) {
@@ -135,6 +146,8 @@ void vr_object_units(double scale) { if(eye_active) object_units=scale; }
 void vr_terrain_units(int level) { if(eye_active) object_units=level==0?2:level==1?1:ldexp(1.0,-2*(level-1)); }
 void vr_queue_units(unsigned rec) { if(eye_active && rec>=0x49F0 && (rec-0x49F0)/0x16<50) queued_units[(rec-0x49F0)/0x16]=object_units; }
 void vr_dequeue_units(unsigned rec) { if(eye_active && rec>=0x49F0 && (rec-0x49F0)/0x16<50) object_units=queued_units[(rec-0x49F0)/0x16]; }
+double vr_queued_units(unsigned rec) { return queued_units[(rec-0x49F0)/0x16]; }
+void vr_set_queued_units(unsigned rec,double units) { queued_units[(rec-0x49F0)/0x16]=units; }
 void vr_translate_object(void)
 {
     if(!eye_active) return;
@@ -161,7 +174,7 @@ void vr_capture_desktop(const uint32_t *src,int w,int h,uint32_t *out,int scale)
 }
 int vr_selftest(void)
 {
-    int fail=vr_cockpit_selftest()+vr_canopy_selftest();
+    int fail=vr_cockpit_selftest()+vr_canopy_selftest()+vr_presentation_selftest();
 #define CHECK(c,msg) do { if(!(c)) {fprintf(stderr,"VR FAIL: %s\n",msg);fail++;} } while(0)
     VrPose eye={{0,0,0,1},{0,0,0}};
     /* Replay the real lifecycle: eye -> canonical flip -> old eye again ->

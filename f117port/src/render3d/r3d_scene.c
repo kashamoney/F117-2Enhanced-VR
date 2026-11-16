@@ -7,6 +7,7 @@
 #include "enhanced/sandbox.h"   /* ENH: S2.4 */
 #include "enhanced/wide.h"      /* ENH: S3.4 */
 #include "enhanced/vr.h"        /* ENH: per-object stereo translation scale */
+#include "enhanced/vr_presentation.h" /* ENH: render distance / host queue */
 #include <math.h>
 
 #define LONG(o) ((s32)DSL(o))
@@ -66,6 +67,7 @@ void r3d_begin_scene(u16 vp, s16 a1, s16 a2, s16 a3, s16 ox, s16 oy, s16 oz, s16
         r3d_draw_sky_ground(DSP(vp));
     }
     DSW(0x49C4) = 0;
+    vr_presentation_queue_reset(); /* ENH: this eye's render-only overflow */
 }
 
 /* 0000:DB3E r3d_end_scene: the queue, offset_clear, the spinner vars 15 / 16, the dead copy 498E -> 49B2 */
@@ -119,7 +121,7 @@ int r3d_cull_core(s16 x, s16 y, s16 z)
     DSSL(0x4958) = A; DSSL(0x495C) = B; DSSL(0x4960) = C;
     s16 Ah = (s16)((u32)A >> 16), Bh = (s16)((u32)B >> 16), Ch = (s16)((u32)C >> 16);
     u16 cls = (u16)(2 * DSW(0x497A));
-    s16 far_ = DSS(0x48B6), d;
+    s16 far_ = (s16)vr_presentation_far(DSS(0x48B6)), d; /* ENH: GPU-only visibility */
     if (Ch > far_) return 1;
     if (Ch < DSS((u16)(0x48C6 + cls))) return 1;
     if (DSW(0x4360)) {
@@ -262,6 +264,7 @@ void r3d_queue_insert(void)
     u16 e;
     if (DSW(0x49C4) == 50) {
         e = QPTR(0);
+        vr_presentation_spill(e); /* ENH: retain distant scenery outside DGROUP */
         for (int k = 1; k < 50; k++) QPTR(k - 1) = QPTR(k);
         DSW(0x49C4)--;
     } else e = (u16)(0x49F0 + 0x16 * DSW(0x49C4));
@@ -271,6 +274,7 @@ void r3d_queue_insert(void)
     DSW((u16)(e + 4)) = (u8)r3d_depth_shade();
     ENH_HR(hr_shade_queue(e));   /* ENH: S3.5 */
     vr_queue_units(e);          /* ENH: preserve the model scale alongside the sorted record */
+    vr_presentation_queue_note(e); /* ENH: retain original equal-depth tie order */
     DSW((u16)(e + 6)) = DSW(0x49C6); DSW((u16)(e + 8)) = DSW(0x4956);
     DSW((u16)(e + 0xA)) = DSW(0x4964); DSW((u16)(e + 0xC)) = DSW(0x4966); DSW((u16)(e + 0xE)) = DSW(0x4968);
     DSW((u16)(e + 0x10)) = DSW(0x496A); DSW((u16)(e + 0x12)) = DSW(0x496C); DSW((u16)(e + 0x14)) = DSW(0x496E);
@@ -307,8 +311,9 @@ static void draw_rec_model(u16 id) { r3d_draw_object(id, DSS(0x4964), DSS(0x4968
 void r3d_draw_queued(void)
 {
     u16 m1 = 0x21, m2 = 0x22, extra_first = 0;                          /* locals of the original, kept across records */
-    for (s16 i = 0; i < DSS(0x49C4); i++) {
-        u16 rec = QPTR(i), v;
+    const int count = vr_presentation_queue_count(DSS(0x49C4)); /* ENH: merged, farthest first */
+    for (int i = 0; i < count; i++) {
+        u16 rec = (u16)vr_presentation_queue_record(i, i < 50 ? QPTR(i) : 0), v; /* ENH: host overflow */
         vr_dequeue_units(rec);  /* ENH: restore that record's stereo translation scale */
         if (DSW((u16)(rec + 8)) & 0x8000) { DSW(0xC030) = 1; v = 0; } else { DSW(0xC030) = 0; v = DSW(0x9874); }
         DSW(0xC044) = v; DSW(0xC042) = v;

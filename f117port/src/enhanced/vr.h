@@ -25,6 +25,8 @@ typedef struct {
     int resolution;           /* GPU eye height; 0 = OpenXR recommendation. Software fallback: square size. */
     double world_scale;       /* physical metres per game metre */
     bool cockpit, diagnostic, selftest, dump, software, gpu_check;
+    bool presentation, distance;
+    unsigned effects;
     char scene_test[1024];
 } VrOptions;
 extern VrOptions vr_options;
@@ -53,6 +55,8 @@ void vr_object_units(double scale);
 void vr_terrain_units(int level);
 void vr_queue_units(unsigned record);
 void vr_dequeue_units(unsigned record);
+double vr_queued_units(unsigned record);
+void vr_set_queued_units(unsigned record,double units);
 void vr_translate_object(void); /* preserve fractional feet in the 16.16 camera translation */
 bool vr_eye_active(void);
 double vr_near_depth(void); /* camera depth of a physical 3 cm near plane */

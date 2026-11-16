@@ -5,6 +5,7 @@
  * Objects (1088:0120): the continuous shade of the object being drawn (E7AC, or its DDFE record at DF08), turned into a code for each shaded fill / line.
  * Nothing here writes mem[], the page or the VGA model: only hr state and the layer's bits 10..15. */
 #include "enhanced/hr.h"
+#include "enhanced/vr_gpu.h"
 #include "enhanced/par.h"
 
 #include <math.h>
@@ -29,7 +30,9 @@ void hr_shade_regions(void (*add)(void *p, size_t n))
 
 void hr_shade_pass_begin(void)
 {
-    hr_smooth = enh_smooth_on() || enh_hr.night;                      /* S3.6: true night implies the blend of the colours it darkens */
+    /* GPU presentation blends its palette in the lookup shader. Its geometry
+     * pass has no software band/shade plane to populate. */
+    hr_smooth = !vr_gpu_active() && (enh_smooth_on() || enh_hr.night);
     cur.valid = 0;
     memset(queued, 0, sizeof queued);
     col.valid = 0;

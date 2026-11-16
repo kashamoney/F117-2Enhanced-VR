@@ -65,6 +65,8 @@ static int usage(const char *prog)
             "          [--keys NAME=CODE,...] [--keymap-test] [--frame-ticks N] [--version] [--classic]\n"
             "          [--vr|--vr-preview] [--vr-resolution 0|640..4096] [--vr-software] [--vr-world-scale 0.1..10]\n"
             "          [--vr-no-cockpit] [--vr-dump] [--vr-diagnostic] [--vr-selftest]\n"
+            "          [--vr-no-presentation] [--vr-original-distance] [--vr-no-water-detail] [--vr-no-shorelines]\n" /* ENH: GPU presentation switches */
+            "          [--vr-no-wakes] [--vr-no-atmosphere] [--vr-no-landing-detail]\n" /* ENH: GPU presentation switches */
             "          [--render-scale N] [--wide] [--no-wide] [--smooth-shading] [--true-night] [--fps vsync|60|30|off]\n"
             "          [--compose-test] [--interp-test]   (Enhanced)\n", prog);
     return 2;

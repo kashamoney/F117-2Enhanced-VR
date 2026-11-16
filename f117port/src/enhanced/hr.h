@@ -121,6 +121,7 @@ void hr_night_queue(int slot);                     /* hr_shade_queue: ... of DDF
 void hr_night_dequeue(int slot);                   /* hr_shade_dequeue */
 void hr_night_cond(u16 v);                         /* r3d_face_list: a condition on variable v holds (10 / 11 = the lights) */
 void hr_night_elem(void);                          /* r3d_face_list: an element (polygon / lines) begins */
+bool hr_light_element(void);                       /* source light condition, also available to the GPU */
 int  hr_night_mode(bool line, u8 c);               /* the mode of the object fill / line being drawn in colour c */
 u8   hr_night_obj(s32 x, s32 y);                   /* the factor of an object pixel */
 void hr_night_backdrop(double H);                    /* hr_sky_ground after the backdrop: the sky / ground factors of its pixels */

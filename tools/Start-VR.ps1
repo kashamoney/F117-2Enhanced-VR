@@ -8,6 +8,13 @@ param(
     [switch]$RecordLive,
     [ValidateRange(0,4096)][int]$Resolution = 0,
     [switch]$Software,
+    [switch]$OriginalPresentation,
+    [switch]$OriginalDrawDistance,
+    [switch]$NoWaterDetail,
+    [switch]$NoShorelines,
+    [switch]$NoWakes,
+    [switch]$NoAtmosphere,
+    [switch]$NoLandingDetail,
     [ValidateRange(0.1,10)][double]$WorldScale = 1.0,
     [string]$GameDirectory
 )
@@ -25,6 +32,13 @@ New-Item -ItemType Directory -Path $sessionPath -Force | Out-Null
 $gameArgs = @('--vr-resolution', $Resolution.ToString(), '--vr-world-scale', $WorldScale.ToString([Globalization.CultureInfo]::InvariantCulture))
 if ($Resolution -gt 0 -and $Resolution -lt 640) { throw 'Resolution must be 0 (native) or 640..4096 pixels high per eye.' }
 if ($Software) { $gameArgs += '--vr-software' }
+if ($OriginalPresentation) { $gameArgs += '--vr-no-presentation' }
+if ($OriginalDrawDistance) { $gameArgs += '--vr-original-distance' }
+if ($NoWaterDetail) { $gameArgs += '--vr-no-water-detail' }
+if ($NoShorelines) { $gameArgs += '--vr-no-shorelines' }
+if ($NoWakes) { $gameArgs += '--vr-no-wakes' }
+if ($NoAtmosphere) { $gameArgs += '--vr-no-atmosphere' }
+if ($NoLandingDetail) { $gameArgs += '--vr-no-landing-detail' }
 if ($Diagnostic) {
     $gameArgs += '--vr-diagnostic'
 } else {

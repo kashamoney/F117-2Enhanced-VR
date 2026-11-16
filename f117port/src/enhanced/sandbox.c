@@ -15,6 +15,7 @@
 #include "enhanced/mapmfd.h"
 #include "enhanced/record.h"
 #include "enhanced/vr.h"        /* ENH: stereo views reuse the saved pre-render image */
+#include "enhanced/vr_presentation.h"
 #include "enhanced/hr.h"
 #include "render3d/r3d.h"
 #include "prog.h"
@@ -696,7 +697,12 @@ bool enh_vr_hud_check(void)
 }
 static VrFrameState vr_rendered;
 VrFrameState enh_vr_frame_state(void) { return vr_rendered; }
-void enh_vr_frame(void) { vr_alpha = enh_interp_lerp()?vr_clock_sample(&vr_clock,dclock()):1.0; }
+void enh_vr_frame(void) {
+    vr_alpha = enh_interp_lerp()?vr_clock_sample(&vr_clock,dclock()):1.0;
+    /* Controlled GPU styling comparisons use one completed snapshot. Runtime
+     * pacing tests and normal play always retain the real interpolation clock. */
+    if(getenv("F117_VR_BENCHMARK")&&getenv("F117_VR_FROZEN_ALPHA"))vr_alpha=1.0;
+}
 bool enh_vr_render(const VrPose *eye, u32 *out, int w, int h)
 {
     if (!enh_vr_ready() || w != enh_cv.lw || h != enh_cv.lh) return false;
@@ -705,6 +711,7 @@ bool enh_vr_render(const VrPose *eye, u32 *out, int w, int h)
     image_load(&img_a);
     enh_sbx = true;
     enh_interp_apply(vr_alpha);
+    vr_presentation_test_scene();
     const int heading = DSW(0x2DEE), pitch = DSW(0x2DF0), roll = DSW(0x2DF2);
     vr_rendered=(VrFrameState){vg_frame,vr_alpha,DSSL(0xBA10),DSSL(0xC02A),heading,pitch,roll};
     int ch, cp, cr;

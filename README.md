@@ -146,11 +146,45 @@ path sends original geometry and a palette instead. No original assets or flight
 rules change. The original palette AND/OR operations and stippled faces are retained
 in an integer GPU target before colour conversion and antialiasing.
 
+The GPU VR presentation now defaults to twice the original model/draw cutoff and
+a 9x9 terrain neighbourhood (formerly 5x5), preserving the original lower-detail
+models. A host-side render queue retains scenery beyond the original 50-record
+limit. Models lose contrast near their render cutoff; targeting, detection and
+weapon ranges remain the original's.
+
+Sparse blue wavelets stay on the sea in world coordinates and fade with distance
+and pixel footprint. Coast edges and restrained wash around original ships help
+judge the surface. Ships are stationary scenery, so they get waterline wash rather
+than long moving wakes. Sky/ground bands and atmospheric shading interpolate the
+original palette colours. Existing landing paint gets a small contrast lift, and
+actual model lights get slightly wider coverage and small halos. There is no new
+altitude/descent warning, HUD cue or sound.
+
+These effects are enabled by `Play-VR.cmd` and `Carrier-VR.cmd`. To compare:
+
+```powershell
+.\tools\Start-VR.ps1 -Preview -CarrierPractice -OriginalPresentation
+.\tools\Start-VR.ps1 -NoWaterDetail -NoWakes
+```
+
+Each addition has an independent switch:
+
+| Launcher option | Executable option |
+| --- | --- |
+| `-OriginalPresentation` | `--vr-no-presentation` |
+| `-OriginalDrawDistance` | `--vr-original-distance` |
+| `-NoWaterDetail` | `--vr-no-water-detail` |
+| `-NoShorelines` | `--vr-no-shorelines` |
+| `-NoWakes` | `--vr-no-wakes` |
+| `-NoAtmosphere` | `--vr-no-atmosphere` |
+| `-NoLandingDetail` | `--vr-no-landing-detail` |
+
 `-Software` / `--vr-software` keeps the old software eye path for comparison; its
-resolution remains a square source size (2048 if unspecified). The optional desktop
-`--smooth-shading` and `--true-night` effects also select that fallback, because their
-per-pixel enhancement planes are not implemented by the GPU backend. Normal game
-night palettes work in the GPU path.
+resolution remains a square source size (2048 if unspecified). `--smooth-shading`
+now stays on the GPU path. `--true-night` still selects the software fallback;
+normal game night palettes work on the GPU. The presentation additions apply to
+the GPU VR/preview path; desktop/classic and the software fallback retain their
+existing rendering. Evidence and validation are in `PRESENTATION_REVIEW.md`.
 
 `--vr-world-scale 0.1..10` sets physical metres per game metre; default 1.0 uses the
 original 512 km theatre / 0x100000 world-unit mapping (about 0.488 m per renderer unit).

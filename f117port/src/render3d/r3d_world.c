@@ -5,6 +5,7 @@
 #include "sim/sim.h"
 #include "sim/sim_priv.h"
 #include "enhanced/interp.h"   /* ENH: smooth clips, projectiles between whole cells */
+#include "enhanced/vr_presentation.h" /* ENH: render-only distant models */
 
 #define LONG(o) ((s32)DSL(o))
 
@@ -138,7 +139,7 @@ void r3d_draw_world_objects(void)
         r3d_project_point(DSS(U), DSS((u16)(U + 2)), DSS((u16)(U + 4)));
         if (DSS(0xDE92) >= 0 || DSW(0x49E0) == 0xFFFF) continue;
         DSW(0xDE92) = (u16)(DSS(0xDE92) >> hi);
-        if (DSS(0xDE92) <= -0x20) {
+        if (DSS(0xDE92) <= vr_presentation_dot(-0x20)) { /* ENH: render-only model-to-dot range */
             gfx_set_fg(0x0F);
             if (enh_shadow_on) enh_dot_begin();   /* ENH: S3.1, the dot at N x */
             hud_line_view(DSS(0x49E0), DSS(0x49E8), DSS(0x49E0), DSS(0x49E8));
