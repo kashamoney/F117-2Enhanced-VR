@@ -10,7 +10,7 @@ class wxButton;
 class wxCheckBox;
 class wxChoice;
 class wxSpinCtrl;
-class wxStaticBitmap;
+class wxGenericStaticBitmap;
 class wxStaticText;
 class wxTextCtrl;
 
@@ -29,6 +29,7 @@ private:
     void FillScales();
     void BrowseFolder();
     void BrowseProgram();
+    void BrowseMacArt();
     GameOptions Options() const;
     void Play();
     void About();
@@ -39,7 +40,8 @@ private:
 
     wxTextCtrl* folder_ = nullptr;
     wxTextCtrl* program_ = nullptr;
-    wxStaticBitmap* statusIcon_ = nullptr;
+    wxGenericStaticBitmap* statusIcon_ = nullptr;  // a click opens MAC_FILES when the Mac art is what is missing
+    bool macWrong_ = false;
     wxStaticText* statusNote_ = nullptr;
     wxChoice* aspect_ = nullptr;
     wxChoice* scale_ = nullptr;
@@ -54,6 +56,12 @@ private:
     wxCheckBox* smooth_ = nullptr;
     wxCheckBox* night_ = nullptr;
     wxCheckBox* classic_ = nullptr;
+    wxCheckBox* macCockpit_ = nullptr;
+    wxString macKey_, macResult_;  // the last archive checked (path, size, time, program) and what was missing
+    wxString MissingMacArt();
+    wxStaticText* macLabel_ = nullptr;
+    wxTextCtrl* macArt_ = nullptr;
+    wxButton* macBrowse_ = nullptr;
     wxButton* play_ = nullptr;
     keys::Bindings bindings_;  // the game's keys (Key Bindings...), saved with the other options
     bool loading_ = true;  // no edits are recorded while the window is built

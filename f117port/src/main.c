@@ -56,6 +56,7 @@ int r3d_leaf_selftest(const char *file);                          /* render3d/r3
 #include "enhanced/enh_canvas.h"   /* ENH */
 #include "enhanced/enhanced.h"   /* ENH */
 #include "enhanced/interp.h"   /* ENH: S4.2, --interp-test */
+#include "enhanced/macart.h"   /* ENH: S7.1, --mac-art-test */
 
 static int usage(const char *prog)
 {
@@ -68,6 +69,7 @@ static int usage(const char *prog)
             "          [--vr-no-presentation] [--vr-original-distance] [--vr-no-water-detail] [--vr-no-shorelines]\n" /* ENH: GPU presentation switches */
             "          [--vr-no-wakes] [--vr-no-atmosphere] [--vr-no-landing-detail]\n" /* ENH: GPU presentation switches */
             "          [--render-scale N] [--wide] [--no-wide] [--smooth-shading] [--true-night] [--fps vsync|60|30|off]\n"
+            "          [--mac-art FILE|DIR]\n"
             "          [--compose-test] [--interp-test]   (Enhanced)\n", prog);
     return 2;
 }
@@ -173,7 +175,14 @@ int main(int argc, char **argv)
             host_shutdown();
             return 1;
         }
-        printf("game folder %s: all files of the chain are present\n", host_game_dir());
+        const char *build = game_build_problem();          /* issue #2: another release of the programs */
+        if (build) {
+            fprintf(stderr, "f117: %s\n", build);
+            host_log_error("%s", build);
+            host_shutdown();
+            return 1;
+        }
+        printf("game folder %s: all files of the chain are present and of the supported release\n", host_game_dir());
         host_shutdown();
         return 0;
     }
@@ -185,7 +194,7 @@ int main(int argc, char **argv)
     video_init();             /* the driver's state, the fonts of MGRAPHIC.EXE (silently none without the game files) */
 
     if (enh.compose_test) {                                    /* ENH: canvas geometry and compositor check */
-        int rc = enh.compose_test == 3 ? enh_interp_selftest() : enh.compose_test == 2 ? enh_wide_geometry_test() : enh_compose_selftest();   /* ENH: S3.4, S4.2 */
+        int rc = enh.compose_test == 4 ? enh_mac_selftest() : enh.compose_test == 3 ? enh_interp_selftest() : enh.compose_test == 2 ? enh_wide_geometry_test() : enh_compose_selftest();   /* ENH: S3.4, S4.2, S7.1 */
         host_shutdown();
         return rc;
     }
@@ -250,6 +259,8 @@ int main(int argc, char **argv)
         const char *missing = game_files_missing();
         if (missing) host_fatal("Game file %s not found in %s.\nUse --game-dir to point at the original game folder.",
                                 missing, host_game_dir());
+        const char *build = game_build_problem();
+        if (build) host_fatal("%s", build);
     }
 
     if (chain) placeholder_init();   /* the stub chain only: the real programs read their own keys, the chain quits on their exit codes */
