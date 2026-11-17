@@ -30,7 +30,7 @@ def main():
     results = {}
 
     def run(name, *extra):
-        command = [sys.executable, '-u', str(ROOT/'tools/benchmark_vr.py'),
+        command = [sys.executable, '-u', str(ROOT/'tools/vr/benchmark_vr.py'),
                    '--exe', str(a.exe.resolve()), '--game-dir', str(a.game_dir.resolve()),
                    '--capture-world', '--frames', '30' if name == 'enabled' else '10', *extra]
         p = subprocess.run(command, cwd=ROOT, capture_output=True, text=True, timeout=180)

@@ -18,7 +18,7 @@ def main():
     path=a.evidence
     if path is None:
         if not a.exe or not a.game_dir:p.error('Use --exe and --game-dir, or --evidence')
-        command=[sys.executable,'-u',str(ROOT/'tools/benchmark_vr.py'),'--exe',str(a.exe.resolve()),
+        command=[sys.executable,'-u',str(ROOT/'tools/vr/benchmark_vr.py'),'--exe',str(a.exe.resolve()),
                  '--game-dir',str(a.game_dir.resolve()),'--visibility-test','--frames','10',
                  '--draw-distance',str(a.draw_distance)]
         proc=subprocess.run(command,cwd=ROOT,capture_output=True,text=True,timeout=180)

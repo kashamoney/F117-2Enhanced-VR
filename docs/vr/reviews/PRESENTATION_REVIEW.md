@@ -1,6 +1,10 @@
 # VR world presentation — S8.17
 
-The additions are enabled in the rebuilt VR executable used by `Carrier-VR.cmd`
+Development record: linked images and logs are local, ignored `work/` outputs,
+not bundled GitHub assets. Run commands from the repository root. See the
+[developer guide](../DEVELOPMENT.md) to regenerate evidence.
+
+The additions are enabled in the rebuilt VR executable used by `tools/vr/Carrier-VR.cmd`
 and `Play-VR.cmd`. Relaunch the game to use them. The accepted cockpit layout is
 unchanged. No altitude/descent warning, HUD cue or warning sound was added.
 
@@ -38,16 +42,16 @@ the automated results below measure coverage and state, not comfort or appearanc
 
 | Addition | Evidence | Camera |
 | --- | --- | --- |
-| Draw Range | [Full-size paired render](work/vr-presentation/95bc741dd2/draw-range.png) | Original GPU world captures, view 0; same pose/time. |
-| Water | [Full-size paired render](work/vr-presentation/95bc741dd2/water.png) | Original GPU world captures, view 10; same pose/time. |
-| Shoreline | [Full-size paired render](work/vr-presentation/95bc741dd2/shoreline.png) | Original GPU world captures, view 0; same pose/time. |
-| Ship Wash | [Full-size paired render](work/vr-presentation/95bc741dd2/ship-wash.png) | Original GPU world captures, view 10; same pose/time. |
-| Atmosphere | [Full-size paired render](work/vr-presentation/95bc741dd2/atmosphere.png) | Original GPU world captures, view 0; same pose/time. |
-| Landing | [Full-size paired render](work/vr-presentation/95bc741dd2/landing.png) | Original GPU world captures, view 4; same pose/time. |
+| Draw Range | [Full-size paired render](../../../work/vr-presentation/95bc741dd2/draw-range.png) | Original GPU world captures, view 0; same pose/time. |
+| Water | [Full-size paired render](../../../work/vr-presentation/95bc741dd2/water.png) | Original GPU world captures, view 10; same pose/time. |
+| Shoreline | [Full-size paired render](../../../work/vr-presentation/95bc741dd2/shoreline.png) | Original GPU world captures, view 0; same pose/time. |
+| Ship Wash | [Full-size paired render](../../../work/vr-presentation/95bc741dd2/ship-wash.png) | Original GPU world captures, view 10; same pose/time. |
+| Atmosphere | [Full-size paired render](../../../work/vr-presentation/95bc741dd2/atmosphere.png) | Original GPU world captures, view 0; same pose/time. |
+| Landing | [Full-size paired render](../../../work/vr-presentation/95bc741dd2/landing.png) | Original GPU world captures, view 4; same pose/time. |
 
 The full textured stereo cockpit is also captured in
-[the enabled mirror](work/vr-benchmark/a843de7e20/vr-mirror.png).
-The [original-presentation mirror](work/vr-benchmark/fd830093e2/vr-mirror.png)
+[the enabled mirror](../../../work/vr-benchmark/a843de7e20/vr-mirror.png).
+The [original-presentation mirror](../../../work/vr-benchmark/fd830093e2/vr-mirror.png)
 uses the master opt-out. Fine detail is easier to judge in the full-size paired
 world renders than in the smaller desktop mirror.
 
@@ -98,15 +102,15 @@ The additions apply to GPU VR and desktop stereo preview. The normal desktop,
 `--classic` and software VR rendering keep their existing paths. `--true-night`
 still selects the software fallback; ordinary game night palettes work on the GPU.
 
-Use `tools/Start-VR.ps1 -OriginalPresentation` for the previous presentation, or
+Use `tools/vr/Start-VR.ps1 -OriginalPresentation` for the previous presentation, or
 independent switches `-OriginalDrawDistance`, `-NoWaterDetail`, `-NoShorelines`,
 `-NoWakes`, `-NoAtmosphere` and `-NoLandingDetail`. Executable equivalents are
 listed in `README.md`. No headset resolution increase is needed.
 
 ```powershell
-python tools/check_vr_presentation.py --exe f117port/build-vr/f117-enhanced-vr.exe --game-dir ../play/Game
-python tools/test_vr.py --exe f117port/build-vr/f117-enhanced-vr.exe --game-dir ../play/Game --resolution 1024
-python tools/benchmark_vr.py --exe f117port/build-vr/f117-enhanced-vr.exe --game-dir ../play/Game --validate --hud-check
+python tools/vr/check_vr_presentation.py --exe f117port/build-vr/f117-enhanced-vr.exe --game-dir ../play/Game
+python tools/vr/test_vr.py --exe f117port/build-vr/f117-enhanced-vr.exe --game-dir ../play/Game --resolution 1024
+python tools/vr/benchmark_vr.py --exe f117port/build-vr/f117-enhanced-vr.exe --game-dir ../play/Game --validate --hud-check
 ```
 
 Controlled comparisons freeze only benchmark interpolation alpha. Normal play and

@@ -1,6 +1,7 @@
 # Original game files (not redistributable)
 /Game
 /Game/
+/.vr-local.json
 
 # Build output and copied binaries
 build*/
