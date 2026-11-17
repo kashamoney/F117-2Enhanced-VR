@@ -16,13 +16,33 @@ It retains the original simulation and keyboard/gamepad flight controls.
 - Your own complete, writable folder of the **original DOS game files**, including
   `F117.COM`, `VGAME.EXE`, `SETUP.EXE`, `START.EXE` and the other original files.
   Game files are not included. The GOG `VGAME.EXE` 473.04 build is not supported.
-- MSYS2's mingw64 build tools and libraries, listed below.
+## Download and play
 
-The fork currently provides source code; no VR binary release is published.
-Upstream desktop release packages do not contain this fork's VR implementation.
-A headset is optional for the desktop stereo preview.
+**[Download the Windows x64 VR preview ZIP](https://github.com/kashamoney/F117-2Enhanced/releases/download/vr-v0.1.0-preview.1/F117-Enhanced-VR-v0.1.0-preview.1-win64.zip)**
+([release notes and checksum](https://github.com/kashamoney/F117-2Enhanced/releases/tag/vr-v0.1.0-preview.1)).
 
-## Build
+1. Extract the entire ZIP to a writable folder. Keep the EXE and DLLs together.
+2. Start SteamVR and make sure your headset is tracking.
+3. Double-click **`f117-enhanced-vr.exe`**.
+4. Choose your original game folder once. The EXE remembers it and starts in VR.
+
+No cloning, building, Git, Python or MSYS2 is needed for the download. Original
+game files and an OpenXR runtime are still required. This is an unsigned,
+experimental preview; hardware comfort and pacing need review on each headset.
+
+The downloaded EXE remembers the game folder under
+`%APPDATA%/kashamoney/F117-Enhanced-VR/settings.ini`, so upgrading the application
+does not lose that choice. Hold **Shift** while opening the EXE to choose another
+folder. Saves remain in your selected game folder. Logs are beside the EXE.
+
+**F12** recenters your seat; **F11** toggles the cockpit. Focus the mirror window
+for original keyboard/gamepad controls. The [player guide](docs/vr/README.md)
+covers preview mode, diagnostics and further controls.
+
+## Build from source (optional)
+
+Developers need MSYS2's mingw64 build tools and libraries. Players using the ZIP
+can skip this section.
 
 Clone this fork and open a terminal in the repository folder:
 
@@ -49,7 +69,9 @@ installed it elsewhere. Python 3 is needed for practice missions and development
 checks, but not ordinary headset play. More build/test details are in the
 [developer guide](docs/vr/DEVELOPMENT.md).
 
-## Play
+## Source checkout launchers
+
+These optional helpers have their own local game-folder setting.
 
 1. Start SteamVR and make sure your headset is tracking. For the tested setup,
    SteamVR must be the active OpenXR runtime.
