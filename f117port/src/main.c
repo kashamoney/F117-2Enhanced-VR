@@ -38,6 +38,10 @@
 
 #include "host.h"
 #include "enhanced/vr.h"                 /* ENH: optional OpenXR / stereo preview */
+#ifdef F117_OPENXR
+#include "enhanced/vr_launch.h"          /* ENH: standalone release setup */
+#include "enhanced/vr_release.h"
+#endif
 #include "keymap.h"
 #include "mem.h"
 #include "platform/platform.h"
@@ -65,6 +69,7 @@ static int usage(const char *prog)
             "          [--keys NAME=CODE,...] [--keymap-test] [--frame-ticks N] [--version] [--classic]\n"
             "          [--vr|--vr-preview] [--vr-resolution 0|640..4096] [--vr-software] [--vr-world-scale 0.1..10]\n"
             "          [--vr-no-cockpit] [--vr-dump] [--vr-diagnostic] [--vr-selftest]\n"
+            "          [--vr-setup] [--vr-config FILE]   (Windows VR build)\n"
             "          [--vr-no-presentation] [--vr-original-distance] [--vr-no-water-detail] [--vr-no-shorelines]\n" /* ENH: GPU presentation switches */
             "          [--vr-no-wakes] [--vr-no-atmosphere] [--vr-no-landing-detail]\n" /* ENH: GPU presentation switches */
             "          [--render-scale N] [--wide] [--no-wide] [--smooth-shading] [--true-night] [--fps vsync|60|30|off]\n"
@@ -101,6 +106,10 @@ int main(int argc, char **argv)
     HostConfig cfg = { "Game", 3, false, true, false };
     bool check = false, chain = false, tick = false, ptest = false, etest = false, vtest = false, vself = false;
     bool ktest = false;
+#ifdef F117_OPENXR
+    bool game_dir_explicit = false, vr_setup = false;
+    const char *vr_config = NULL;
+#endif
     const char *simref = NULL;
     const char *r3dref = NULL;
     const char *decref = NULL, *feref = NULL, *shref = NULL, *dbref = NULL, *sndref = NULL;
@@ -109,7 +118,16 @@ int main(int argc, char **argv)
         const char *a = argv[i], *v = i + 1 < argc ? argv[i + 1] : NULL;
         { int used = vr_parse_arg(argc, argv, i); if (used) { i += used - 1; continue; } } /* ENH: optional VR */
         { int used = enh_parse_arg(argc, argv, i); if (used) { i += used - 1; continue; } }   /* ENH: --classic and the Enhanced options */
-        if (!strcmp(a, "--game-dir") && v) { cfg.game_dir = v; i++; }
+        if (!strcmp(a, "--game-dir") && v) {
+            cfg.game_dir = v; i++;
+#ifdef F117_OPENXR
+            game_dir_explicit = true;                    /* ENH: native release setup preserves explicit arguments */
+#endif
+        }
+#ifdef F117_OPENXR
+        else if (!strcmp(a, "--vr-config") && v) { vr_config = v; i++; }
+        else if (!strcmp(a, "--vr-setup")) vr_setup = true;
+#endif
         else if (!strcmp(a, "--scale") && v) { cfg.scale = atoi(v); i++; }
         else if (!strcmp(a, "--fullscreen")) cfg.fullscreen = true;
         else if (!strcmp(a, "--headless")) cfg.headless = true;
@@ -126,7 +144,14 @@ int main(int argc, char **argv)
             i++;
         }
         else if (!strcmp(a, "--keymap-test")) ktest = true;
-        else if (!strcmp(a, "--version")) { printf("f117-enhanced %s\n", F117_VERSION); return 0; }
+        else if (!strcmp(a, "--version")) {
+#ifdef F117_OPENXR
+            printf("f117-enhanced-vr %s (upstream %s)\n", F117_VR_VERSION, F117_VERSION);
+#else
+            printf("f117-enhanced %s\n", F117_VERSION);
+#endif
+            return 0;
+        }
         else if (!strcmp(a, "--frame-ticks") && v) { host_set_frame_ticks(atoi(v)); i++; }    /* PORT: the game speed */
         else if (!strcmp(a, "--chain-test")) chain = true;
         else if (!strcmp(a, "--platform-test")) ptest = true;
@@ -150,6 +175,14 @@ int main(int argc, char **argv)
     enh_env_args();                                            /* ENH: S2.4, F117_ENH_ARGS before anything runs (--sandbox-hash sees the whole chain) */
     if (vr_options.selftest) return vr_selftest();              /* ENH: no runtime or game files required */
     if (vr_options.diagnostic) return vr_diagnostic();
+#ifdef F117_OPENXR
+    if (argc == 1 || vr_setup) vr_options.mode = 1;        /* ENH: double-click starts VR, developer/test arguments retain their behavior */
+    if (!enh.classic && (argc == 1 || vr_setup || vr_config ||
+        ((vr_options.mode == 1 || vr_options.mode == 2) && !game_dir_explicit && !cfg.headless && !check))) {
+        int ready = vr_launch_prepare(&cfg.game_dir, game_dir_explicit, vr_config, !cfg.headless && !check, vr_setup);
+        if (ready <= 0) return ready == 0 ? 0 : 1;
+    }
+#endif
     if (vr_enabled()) {                                       /* ENH: instrument canvas independent of GPU eye targets; headset presentation owns pacing */
         if (vr_options.mode == 3) cfg.headless = true;
         if (cfg.headless && vr_options.mode != 3) { fprintf(stderr, "VR requires a window; use --vr-selftest for headless checks.\n"); return 2; }
@@ -173,7 +206,14 @@ int main(int argc, char **argv)
             host_shutdown();
             return 1;
         }
-        printf("game folder %s: all files of the chain are present\n", host_game_dir());
+        const char *build = game_build_problem();         /* ENH: supported-release validation before starting a downloaded build */
+        if (build) {
+            fprintf(stderr, "f117: %s\n", build);
+            host_log_error("%s", build);
+            host_shutdown();
+            return 1;
+        }
+        printf("game folder %s: all files of the chain are present and of the supported release\n", host_game_dir());
         host_shutdown();
         return 0;
     }
@@ -250,6 +290,8 @@ int main(int argc, char **argv)
         const char *missing = game_files_missing();
         if (missing) host_fatal("Game file %s not found in %s.\nUse --game-dir to point at the original game folder.",
                                 missing, host_game_dir());
+        const char *build = game_build_problem();         /* ENH: upstream game-build guard; no simulation changes */
+        if (build) host_fatal("%s", build);
     }
 
     if (chain) placeholder_init();   /* the stub chain only: the real programs read their own keys, the chain quits on their exit codes */

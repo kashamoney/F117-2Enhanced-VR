@@ -46,6 +46,38 @@ without starting SteamVR or changing the supplied roster:
 python tools/vr/test_launcher.py --exe f117port/build-vr/f117-enhanced-vr.exe --game-dir "D:/Games/F117"
 ```
 
+## Package a Windows VR download
+
+The release version lives in `f117port/src/enhanced/vr_release.h`, independently
+of the upstream engine version. Native Windows setup is in `vr_launch.cpp`; its
+C ABI hook in `main.c` keeps ordinary developer/test command lines unchanged.
+The default EXE launch enables VR, selects/validates original game data, and
+remembers the folder through the Windows user profile. Desktop builds omit it.
+
+Commit source changes before packaging a public build:
+
+```powershell
+python tools/vr/package_release.py --game-dir "D:/Games/F117"
+python tools/vr/test_release.py --package release/F117-Enhanced-VR-v0.1.0-preview.1-win64.zip --game-dir "D:/Games/F117" --check-dialog
+```
+
+Packaging performs a Release build and ten focused checks, includes the exact
+runtime DLL set and license notices, records the source commit/file hashes in
+`RELEASE.json`, and writes the ZIP plus `SHA256SUMS.txt`. Original game data is
+read only as an exclusion reference: every staged file and the final ZIP are
+checked by game-file name and content. No roster or game asset is distributed.
+Use a fresh `--output-dir` for candidates; `--allow-dirty` is for internal
+candidates only. Review runtime dependencies if their DLL set changes.
+
+`test_release.py` extracts into paths with spaces and accented characters, strips
+build tools from the child process PATH, validates native folder choices and
+unsupported-game rejection, and renders a real D3D11 preview. `--check-dialog`
+also starts the no-argument EXE and cancels only that test process's first-use
+folder picker before OpenXR starts. Scripted mission checks can additionally
+point `tools/vr/test_vr.py` at the extracted EXE. Headset comfort/reprojection are
+outside desktop automation. Publish preview ZIPs as GitHub prereleases, with a
+tag identifying the exact tested source commit.
+
 ## Update from upstream
 
 Keep `origin` pointing to this fork and `upstream` pointing to

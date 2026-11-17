@@ -1,9 +1,32 @@
 # VR player guide
 
-Start with the [fork README](../../README.md) for requirements, building and first
-launch. Commands below run from the repository root.
+Start with the [fork README](../../README.md) for requirements and the download.
+Commands for source-checkout helpers below run from the repository root.
 
-## Game folder and saves
+## Downloaded Windows release
+
+Extract the entire release ZIP, start SteamVR, then open `f117-enhanced-vr.exe`.
+The EXE starts in VR without arguments and opens a native folder picker on first
+use. It remembers your original game folder in
+`%APPDATA%/kashamoney/F117-Enhanced-VR/settings.ini`; saves remain in that game folder.
+Keep all packaged DLLs beside the EXE. No runtime scripts or build tools are needed.
+
+Hold Shift while opening the EXE to choose a different folder. From a terminal,
+`f117-enhanced-vr.exe --vr-setup` does the same. Optional terminal commands:
+
+```text
+f117-enhanced-vr.exe --vr-preview
+f117-enhanced-vr.exe --vr-diagnostic
+f117-enhanced-vr.exe --check --game-dir "D:/Games/F117"
+```
+
+The native setup checks the supported original DOS builds before VR starts;
+the GOG 473.04 VGAME build is unsupported. Logs are beside the EXE for native setup
+launches. `--vr-config FILE` or `F117_VR_CONFIG` overrides the native settings
+location for portable profiles or testing; these are optional developer controls.
+Cancelling the first-use folder picker exits without starting VR.
+
+## Source checkout: game folder and saves
 
 `Play-VR.cmd` and `Preview-VR.cmd` use `tools/vr/Start-VR.ps1`. The launcher checks
 `-GameDirectory`, then `F117_GAME_DIR`, `.vr-local.json`, and the repository's
