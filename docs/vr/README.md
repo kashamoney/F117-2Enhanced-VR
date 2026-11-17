@@ -8,7 +8,11 @@ Commands for source-checkout helpers below run from the repository root.
 Extract the entire release ZIP, start SteamVR, then open `f117-enhanced-vr.exe`.
 The EXE starts in VR without arguments and opens a native folder picker on first
 use. It remembers your original game folder in
-`%APPDATA%/kashamoney/F117-Enhanced-VR/settings.ini`; saves remain in that game folder.
+`%APPDATA%\F117-Enhanced-VR\settings.ini`; saves remain in that game folder.
+On upgrade from preview 1, settings are copied from the former publisher-named
+folder if the new file does not already exist. The old file is retained and an
+existing new settings file is never replaced. Explicit settings overrides are
+independent profiles and do not import the old default.
 Keep all packaged DLLs beside the EXE. No runtime scripts or build tools are needed.
 
 Hold Shift while opening the EXE to choose a different folder. From a terminal,

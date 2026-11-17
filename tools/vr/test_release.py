@@ -70,6 +70,43 @@ def main():
     run('remembered-game-folder', ['--headless', '--check', '--vr-config', profile], contains=str(game))
     alternate = dict(env, F117_GAME_DIR=str(game))
     run('environment-game-folder', ['--headless', '--check', '--vr-config', evidence / 'environment.ini'], environment=alternate)
+    # Test real default-path selection under an isolated APPDATA, never the user's profile.
+    clean_roaming = evidence / 'fresh roaming profile with \u00e9'
+    fresh_env = dict(env, APPDATA=str(clean_roaming), F117_GAME_DIR=str(game))
+    run('new-default-settings-location', ['--vr', '--check'], environment=fresh_env)
+    new_default = clean_roaming / 'F117-Enhanced-VR/settings.ini'
+    assert new_default.is_file()
+    assert not (clean_roaming / 'kashamoney').exists(), 'Fresh installs created the old namespace'
+    migration_roaming = evidence / 'upgrade roaming profile with \u00e9'
+    legacy = migration_roaming / 'kashamoney/F117-Enhanced-VR/settings.ini'
+    migrated = migration_roaming / 'F117-Enhanced-VR/settings.ini'
+    legacy.parent.mkdir(parents=True)
+    legacy.write_text(f'[VR]\nGameDirectory={game}\n[Other]\nKeep=legacy-value\n', encoding='utf-16')
+    legacy_bytes = legacy.read_bytes()
+    migration_env = dict(env, APPDATA=str(migration_roaming))
+    run('migrate-legacy-settings', ['--vr', '--check'], environment=migration_env, contains=str(game))
+    migrated_config = configparser.ConfigParser()
+    migrated_config.read(migrated, encoding='utf-16')
+    assert Path(migrated_config['VR']['GameDirectory']) == game
+    assert migrated_config['Other']['Keep'] == 'legacy-value'
+    assert legacy.read_bytes() == legacy_bytes, 'Migration changed the rollback copy'
+    newer_game = evidence / 'newer game choice'
+    shutil.copytree(game, newer_game)
+    migrated.write_text(f'[VR]\nGameDirectory={newer_game}\n[Other]\nKeep=new-value\n', encoding='utf-16')
+    run('existing-new-settings-win', ['--vr', '--check'], environment=migration_env, contains=str(newer_game))
+    newer_config = configparser.ConfigParser()
+    newer_config.read(migrated, encoding='utf-16')
+    assert newer_config['Other']['Keep'] == 'new-value'
+    run('repeat-upgrade-keeps-new-choice', ['--vr', '--check'], environment=migration_env, contains=str(newer_game))
+    assert legacy.read_bytes() == legacy_bytes
+    custom = evidence / 'independent custom profile.ini'
+    run('explicit-profile-does-not-migrate', ['--headless', '--check', '--vr-config', custom],
+        expected=1, contains='Use --game-dir', environment=migration_env)
+    assert not custom.exists()
+    custom_env = dict(migration_env, F117_VR_CONFIG=str(custom))
+    run('environment-profile-does-not-migrate', ['--vr', '--check'], expected=1,
+        contains='Use --game-dir', environment=custom_env)
+    assert not custom.exists()
     run('bad-game-folder', ['--headless', '--check', '--vr-config', profile, '--game-dir', cwd], expected=1, contains='Missing F117.COM')
     # Damage only a disposable copy; an unsupported build must fail before rendering.
     vgame = game / 'VGAME.EXE'

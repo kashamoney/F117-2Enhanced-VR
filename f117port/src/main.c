@@ -178,14 +178,14 @@ int main(int argc, char **argv)
 #ifdef F117_OPENXR
     if (argc == 1 || vr_setup) vr_options.mode = 1;        /* ENH: double-click starts VR, developer/test arguments retain their behavior */
     if (!enh.classic && (argc == 1 || vr_setup || vr_config ||
-        ((vr_options.mode == 1 || vr_options.mode == 2) && !game_dir_explicit && !cfg.headless && !check))) {
+        ((vr_options.mode == 1 || vr_options.mode == 2) && !game_dir_explicit && (!cfg.headless || check)))) {
         int ready = vr_launch_prepare(&cfg.game_dir, game_dir_explicit, vr_config, !cfg.headless && !check, vr_setup);
         if (ready <= 0) return ready == 0 ? 0 : 1;
     }
 #endif
     if (vr_enabled()) {                                       /* ENH: instrument canvas independent of GPU eye targets; headset presentation owns pacing */
         if (vr_options.mode == 3) cfg.headless = true;
-        if (cfg.headless && vr_options.mode != 3) { fprintf(stderr, "VR requires a window; use --vr-selftest for headless checks.\n"); return 2; }
+        if (cfg.headless && vr_options.mode != 3 && !check) { fprintf(stderr, "VR requires a window; use --vr-selftest for headless checks.\n"); return 2; }
         cfg.aspect_4_3 = false;
         enh.render_scale = vr_use_gpu()?4:(vr_canvas_resolution()/1024>0?vr_canvas_resolution()/1024:1);
         if (!enh.dither_explicit) enh.dither_fine = true; /* ENH: checkerboard shading follows the finer eye pixels */

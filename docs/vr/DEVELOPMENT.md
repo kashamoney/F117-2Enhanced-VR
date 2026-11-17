@@ -54,11 +54,18 @@ C ABI hook in `main.c` keeps ordinary developer/test command lines unchanged.
 The default EXE launch enables VR, selects/validates original game data, and
 remembers the folder through the Windows user profile. Desktop builds omit it.
 
+The default profile is `%APPDATA%\F117-Enhanced-VR\settings.ini`. On upgrade,
+the former publisher-prefixed profile is copied only if the new file is absent;
+the original stays intact and a pre-existing new profile always wins. Explicit
+`--vr-config` and `F117_VR_CONFIG` profiles do not import default settings.
+`--vr --check` validates the remembered default without opening a headset session.
+Release tests isolate APPDATA to check migration without changing user settings.
+
 Commit source changes before packaging a public build:
 
 ```powershell
 python tools/vr/package_release.py --game-dir "D:/Games/F117"
-python tools/vr/test_release.py --package release/F117-Enhanced-VR-v0.1.0-preview.1-win64.zip --game-dir "D:/Games/F117" --check-dialog
+python tools/vr/test_release.py --package release/F117-Enhanced-VR-v0.1.0-preview.2-win64.zip --game-dir "D:/Games/F117" --check-dialog
 ```
 
 Packaging performs a Release build and ten focused checks, includes the exact
