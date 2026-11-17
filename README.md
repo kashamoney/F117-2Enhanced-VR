@@ -1,6 +1,6 @@
 # F-117A Enhanced VR
 
-Experimental seated **OpenXR VR support for Windows**, built on
+Seated **OpenXR VR support for Windows**, built on
 [kylofon/F117-2Enhanced](https://github.com/kylofon/F117-2Enhanced), the native SDL3
 port of MicroProse's *F-117A Nighthawk Stealth Fighter 2.0*.
 
@@ -16,10 +16,11 @@ It retains the original simulation and keyboard/gamepad flight controls.
 - Your own complete, writable folder of the **original DOS game files**, including
   `F117.COM`, `VGAME.EXE`, `SETUP.EXE`, `START.EXE` and the other original files.
   Game files are not included. The GOG `VGAME.EXE` 473.04 build is not supported.
+
 ## Download and play
 
-**[Download the Windows x64 VR preview ZIP](https://github.com/kashamoney/F117-2Enhanced/releases/download/vr-v0.1.0-preview.2/F117-Enhanced-VR-v0.1.0-preview.2-win64.zip)**
-([release notes and checksum](https://github.com/kashamoney/F117-2Enhanced/releases/tag/vr-v0.1.0-preview.2)).
+**[Download F-117A Enhanced VR v0.1.0 for Windows x64](https://github.com/kashamoney/F117-2Enhanced-VR/releases/download/vr-v0.1.0/F117-Enhanced-VR-v0.1.0-win64.zip)**
+([release notes and checksum](https://github.com/kashamoney/F117-2Enhanced-VR/releases/latest)).
 
 1. Extract the entire ZIP to a writable folder. Keep the EXE and DLLs together.
 2. Start SteamVR and make sure your headset is tracking.
@@ -27,14 +28,12 @@ It retains the original simulation and keyboard/gamepad flight controls.
 4. Choose your original game folder once. The EXE remembers it and starts in VR.
 
 No cloning, building, Git, Python or MSYS2 is needed for the download. Original
-game files and an OpenXR runtime are still required. This is an unsigned,
-experimental preview; hardware comfort and pacing need review on each headset.
+game files and an OpenXR runtime are still required. Hardware compatibility is
+described above; the Windows build is unsigned.
 
 The downloaded EXE remembers the game folder under
 `%APPDATA%\F117-Enhanced-VR\settings.ini`, so upgrading the application
-does not lose that choice. Existing preview-1 settings are copied automatically
-from the former publisher-named folder; existing settings in the new location take
-priority. The old file is retained for rollback. Hold **Shift** while opening the EXE to choose another
+does not lose that choice. Hold **Shift** while opening the EXE to choose another
 folder. Saves remain in your selected game folder. Logs are beside the EXE.
 
 **F12** recenters your seat; **F11** toggles the cockpit. Focus the mirror window
@@ -49,8 +48,8 @@ can skip this section.
 Clone this fork and open a terminal in the repository folder:
 
 ```sh
-git clone --branch feature/openxr-vr https://github.com/kashamoney/F117-2Enhanced.git
-cd F117-2Enhanced
+git clone --branch feature/openxr-vr https://github.com/kashamoney/F117-2Enhanced-VR.git
+cd F117-2Enhanced-VR
 ```
 
 Install these packages in the **MSYS2 MINGW64** shell:
