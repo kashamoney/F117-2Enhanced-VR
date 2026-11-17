@@ -11,7 +11,7 @@ from pathlib import Path
 import numpy as np
 from PIL import Image, ImageDraw, ImageFont
 
-ROOT = Path(__file__).resolve().parent.parent
+ROOT = Path(__file__).resolve().parents[2]
 INK = '#dce5ee'
 BG = '#18232e'
 WINDOWS = [
@@ -175,7 +175,7 @@ def main():
     p.add_argument('--skip-pilot',action='store_true',help='iterate exterior geometry before recapturing the game')
     a=p.parse_args();a.out.mkdir(parents=True,exist_ok=True)
     fit=json.loads(a.fit.read_text());mesh=json.loads((a.capture/'vr-canopy-geometry.json').read_text())
-    annotations=json.loads((ROOT/'tools/canopy_landmarks.json').read_text())
+    annotations=json.loads((ROOT/'tools/vr/canopy_landmarks.json').read_text())
     by_name={v['name']:v for v in annotations['views']}
     fit['views']=[dict(by_name[v['name']],**v) for v in fit['views']]
     if set(fit['points'])!=set(mesh['landmarks']):raise ValueError('Fit and exported mesh landmark names differ')

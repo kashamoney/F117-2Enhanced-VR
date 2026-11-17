@@ -2,7 +2,9 @@
 
 Enhanced C/SDL3 port of MicroProse *F-117A Nighthawk Stealth Fighter 2.0* (1991), built on the faithful port
 `../reference` at v0.1.0 (d05175f). State and subtasks: `PLAN.md`. Engine rules: `ENGINE.md`.
-Goal: **higher resolution and frame rate without changing the original art** (pictures, fonts, sprites, palettes,
+Fork scope: experimental Windows/OpenXR VR; player setup is in `README.md`, developer details in `docs/vr/DEVELOPMENT.md`.
+VR helpers and reports live in `tools/vr/` and `docs/vr/`; keep upstream paths stable when merging updates.
+Inherited Enhanced goal: **higher resolution and frame rate without changing the original art** (pictures, fonts, sprites, palettes,
 models stay the original's; only how they are rendered and paced changes).
 
 Enhanced rules:

@@ -1,9 +1,13 @@
 # VR input pacing and extended visibility — S8.18
 
+Development record: linked images and logs are local, ignored `work/` outputs,
+not bundled GitHub assets. Run commands from the repository root. See the
+[developer guide](../DEVELOPMENT.md) to regenerate evidence.
+
 The subsequent [S8.19 aircraft/water update](VR_AIRCRAFT_REVIEW.md) corrects a
 camera-cell position jump, removes sea speckles and improves silhouette visibility.
 
-Eight times the original render range is now the default in `Carrier-VR.cmd`
+Eight times the original render range is now the default in `tools/vr/Carrier-VR.cmd`
 and `Play-VR.cmd`. Use `-DrawDistance 4` for the lighter setting, or select
 1, 2, 4 or 8. Resolution and the accepted cockpit are unchanged.
 
@@ -64,11 +68,11 @@ final terrain-to-horizon fade cannot erase their visibility marker.
 | 4x | 512 | 0 | 6.5 km |
 | 8x | 512 | 0 | 13.0 km |
 
-Final traces: [4x sweep](work/vr-benchmark/7ca603ce15/vr-visibility.csv) and
-[8x sweep](work/vr-benchmark/a73684c2c3/vr-visibility.csv). Actual game renders
-from the 8x trace: [1 km](work/vr-benchmark/a73684c2c3/vr-aircraft-4096.png),
-[6 km](work/vr-benchmark/a73684c2c3/vr-aircraft-24576.png),
-[12 km](work/vr-benchmark/a73684c2c3/vr-aircraft-49152.png).
+Final traces: [4x sweep](../../../work/vr-benchmark/7ca603ce15/vr-visibility.csv) and
+[8x sweep](../../../work/vr-benchmark/a73684c2c3/vr-visibility.csv). Actual game renders
+from the 8x trace: [1 km](../../../work/vr-benchmark/a73684c2c3/vr-aircraft-4096.png),
+[6 km](../../../work/vr-benchmark/a73684c2c3/vr-aircraft-24576.png),
+[12 km](../../../work/vr-benchmark/a73684c2c3/vr-aircraft-49152.png).
 
 The sweep runs from 62.5 metres to 32 km. Seven GPU coverage samples per setting
 verify actual visible pixels, with a second isolated-aircraft mask to distinguish
@@ -117,11 +121,11 @@ containing Unicorn after the system Python failed to import it.
 Reproduce without starting SteamVR:
 
 ```powershell
-python tools/check_vr_hitches.py --exe f117port/build-vr/f117-enhanced-vr.exe --game-dir ../play/Game --reversals
-python tools/check_vr_visibility.py --exe f117port/build-vr/f117-enhanced-vr.exe --game-dir ../play/Game --draw-distance 8
-python tools/check_vr_presentation.py --exe f117port/build-vr/f117-enhanced-vr.exe --game-dir ../play/Game
+python tools/vr/check_vr_hitches.py --exe f117port/build-vr/f117-enhanced-vr.exe --game-dir ../play/Game --reversals
+python tools/vr/check_vr_visibility.py --exe f117port/build-vr/f117-enhanced-vr.exe --game-dir ../play/Game --draw-distance 8
+python tools/vr/check_vr_presentation.py --exe f117port/build-vr/f117-enhanced-vr.exe --game-dir ../play/Game
 ```
 
 When convenient, review held thrust, aircraft approaching from a distance and
-scenery pop-in in the headset. Compare `Carrier-VR.cmd -DrawDistance 4` if 8x
+scenery pop-in in the headset. Compare `tools/vr/Carrier-VR.cmd -DrawDistance 4` if 8x
 costs too much frame time in a different theatre or with other GPU workloads.

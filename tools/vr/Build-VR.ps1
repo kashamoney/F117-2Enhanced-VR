@@ -1,7 +1,7 @@
 [CmdletBinding()]
-param([string]$MsysRoot = 'C:\msys64', [switch]$DesktopOnly)
+param([string]$MsysRoot = 'C:\msys64', [switch]$DesktopOnly, [string]$PythonExecutable)
 $ErrorActionPreference = 'Stop'
-$repoPath = Split-Path -Parent $PSScriptRoot
+$repoPath = Split-Path -Parent (Split-Path -Parent $PSScriptRoot)
 $binPath = Join-Path $MsysRoot 'mingw64\bin'
 if (-not (Test-Path -LiteralPath (Join-Path $binPath 'gcc.exe'))) {
     throw 'Install MSYS2 and its mingw64 GCC, CMake, Ninja, SDL3 and openxr-sdk packages. See the README VR section.'
@@ -9,9 +9,8 @@ if (-not (Test-Path -LiteralPath (Join-Path $binPath 'gcc.exe'))) {
 $env:PATH = $binPath + ';' + $env:PATH
 $buildPath = Join-Path $repoPath $(if ($DesktopOnly) { 'f117port\build-desktop' } else { 'f117port\build-vr' })
 $xrEnabled = if ($DesktopOnly) { 'OFF' } else { 'ON' }
-$testPythonPath = Join-Path (Split-Path -Parent $repoPath) 'tools\python\Scripts\python.exe'
 $pythonArgs = @()
-if (Test-Path -LiteralPath $testPythonPath) { $pythonArgs = @("-DPython3_EXECUTABLE=$testPythonPath") }
+if ($PythonExecutable) { $pythonArgs = @("-DPython3_EXECUTABLE=$((Resolve-Path -LiteralPath $PythonExecutable).Path)") }
 & cmake -S (Join-Path $repoPath 'f117port') -B $buildPath -G Ninja '-DCMAKE_C_COMPILER=gcc' '-DCMAKE_CXX_COMPILER=g++' '-DCMAKE_BUILD_TYPE=Release' '-DF117_LAUNCHER=OFF' "-DF117_OPENXR=$xrEnabled" @pythonArgs
 if ($LASTEXITCODE -ne 0) { throw 'CMake configuration failed.' }
 & cmake --build $buildPath --parallel 12

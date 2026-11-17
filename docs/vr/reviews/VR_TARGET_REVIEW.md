@@ -1,5 +1,9 @@
 # VR targeting HUD and point projection — S8.20
 
+Development record: linked images and logs are local, ignored `work/` outputs,
+not bundled GitHub assets. Run commands from the repository root. See the
+[developer guide](../DEVELOPMENT.md) to regenerate evidence.
+
 The missing bombing cues were a VR rendering defect. Target selection on the
 right MFD was working, but the isolated HUD texture omitted the original drawing
 stage that produces target boxes, weapon-lock symbols, bombing diamonds and
@@ -24,8 +28,8 @@ avoid deliberately testing the original low-altitude warning's hidden blink.
 | Free-fall bomb | omitted drawing stage | 1096 / 510 |
 
 Actual exported HUD images:
-[retarded bomb](work/vr-benchmark/1739daf9a3/vr-hud-bomb-29.png),
-[free-fall bomb](work/vr-benchmark/1739daf9a3/vr-hud-bomb-30.png).
+[retarded bomb](../../../work/vr-benchmark/1739daf9a3/vr-hud-bomb-29.png),
+[free-fall bomb](../../../work/vr-benchmark/1739daf9a3/vr-hud-bomb-30.png).
 The generic HUD also preserves all 10,383 original ink pixels, with zero missing
 pixels or background leakage. These are controlled fixture renders, not captures
 of the user's current mission.
@@ -43,9 +47,9 @@ translation. All twelve cases were present. Maximum angular-ray disagreement
 fell from **0.541517** to below the trace's nine-decimal precision.
 
 - Before point trace: `work/vr-benchmark/804f53373f/vr-marker-poses.csv`.
-- Fixed [point/head-pose trace](work/vr-benchmark/31cc79ce71/vr-marker-poses.csv).
-- Recheck: `python tools/check_vr_marker_alignment.py TRACE.csv`.
-- Bomb regression: run `tools/benchmark_vr.py` with `--hud-check` and the usual
+- Fixed [point/head-pose trace](../../../work/vr-benchmark/31cc79ce71/vr-marker-poses.csv).
+- Recheck: `python tools/vr/check_vr_marker_alignment.py TRACE.csv`.
+- Bomb regression: run `tools/vr/benchmark_vr.py` with `--hud-check` and the usual
   executable/game-directory arguments. It uses disposable game files.
 
 Both builds and ten focused checks pass. The scripted mission retains 213 exact

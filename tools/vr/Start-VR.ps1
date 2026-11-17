@@ -2,6 +2,8 @@
 param(
     [switch]$Preview,
     [switch]$Diagnostic,
+    [switch]$Check,
+    [switch]$NoPrompt,
     [switch]$DumpEyes,
     [switch]$CarrierPractice,
     [switch]$TraceWorld,
@@ -26,10 +28,46 @@ $previousKeyScript = $env:F117_KEYS
 $previousShellScript = $env:F117_SHELL_SCRIPT
 $previousVrTiming = $env:F117_VR_TIMING
 $previousVrCapture = $env:F117_VR_CAPTURE_LIVE
-$repoPath = Split-Path -Parent $PSScriptRoot
+$repoPath = Split-Path -Parent (Split-Path -Parent $PSScriptRoot)
+$settingsPath = Join-Path $repoPath '.vr-local.json'
+if ($Diagnostic -and $Check) { throw 'Choose either -Diagnostic (headset) or -Check (game files).' }
+if (-not $Diagnostic) {
+    if (-not $GameDirectory) { $GameDirectory = $env:F117_GAME_DIR }
+    if (-not $GameDirectory -and (Test-Path -LiteralPath $settingsPath)) {
+        try {
+            $settings = [IO.File]::ReadAllText($settingsPath) | ConvertFrom-Json
+            $GameDirectory = $settings.GameDirectory
+            if ($GameDirectory -and -not [IO.Path]::IsPathRooted($GameDirectory)) {
+                $GameDirectory = Join-Path $repoPath $GameDirectory
+            }
+        } catch { throw 'Cannot read .vr-local.json. Supply -GameDirectory to select your game folder again.' }
+    }
+    if (-not $GameDirectory -and (Test-Path -LiteralPath (Join-Path $repoPath 'Game\VGAME.EXE'))) {
+        $GameDirectory = Join-Path $repoPath 'Game'
+    }
+    if (-not $GameDirectory) {
+        if ($NoPrompt) { throw 'Choose your original game folder with -GameDirectory, F117_GAME_DIR, or a Game folder beside README.md.' }
+        Add-Type -AssemblyName System.Windows.Forms
+        $folderPicker = New-Object System.Windows.Forms.FolderBrowserDialog
+        $folderPicker.Description = 'Select your original F-117A game folder (containing F117.COM, VGAME.EXE and the other game files).'
+        $folderPicker.ShowNewFolderButton = $false
+        try {
+            if ($folderPicker.ShowDialog() -ne [System.Windows.Forms.DialogResult]::OK) {
+                Write-Output 'Game folder selection cancelled.'
+                return
+            }
+            $GameDirectory = $folderPicker.SelectedPath
+        } finally { $folderPicker.Dispose() }
+    }
+    if (-not (Test-Path -LiteralPath (Join-Path $GameDirectory 'VGAME.EXE') -PathType Leaf)) {
+        throw 'The selected folder does not contain VGAME.EXE. Supply -GameDirectory with your original game folder.'
+    }
+    $resolvedGamePath = (Resolve-Path -LiteralPath $GameDirectory).Path
+    $settingsJson = @{ GameDirectory = $resolvedGamePath } | ConvertTo-Json
+    [IO.File]::WriteAllText($settingsPath, $settingsJson, (New-Object Text.UTF8Encoding($false)))
+}
 $exePath = Join-Path $repoPath 'f117port\build-vr\f117-enhanced-vr.exe'
 if (-not (Test-Path -LiteralPath $exePath)) { & (Join-Path $PSScriptRoot 'Build-VR.ps1') }
-if (-not $GameDirectory) { $GameDirectory = Join-Path (Split-Path -Parent $repoPath) 'play\Game' }
 $sessionPath = Join-Path $repoPath 'work\vr-session'
 New-Item -ItemType Directory -Path $sessionPath -Force | Out-Null
 $gameArgs = @('--vr-resolution', $Resolution.ToString(), '--vr-world-scale', $WorldScale.ToString([Globalization.CultureInfo]::InvariantCulture))
@@ -47,9 +85,9 @@ if ($NoAtmosphere) { $gameArgs += '--vr-no-atmosphere' }
 if ($NoLandingDetail) { $gameArgs += '--vr-no-landing-detail' }
 if ($Diagnostic) {
     $gameArgs += '--vr-diagnostic'
+} elseif ($Check) {
+    $gameArgs = @('--headless', '--check', '--game-dir', $resolvedGamePath)
 } else {
-    $resolvedGamePath = (Resolve-Path -LiteralPath $GameDirectory).Path
-    if (-not (Test-Path -LiteralPath (Join-Path $resolvedGamePath 'VGAME.EXE'))) { throw 'GameDirectory must contain the original game files.' }
     if ($CarrierPractice) {
         $practicePath = Join-Path $repoPath ('work\vr-practice\' + [guid]::NewGuid().ToString('N').Substring(0,10) + '\game')
         & python (Join-Path $PSScriptRoot 'prepare_vr_practice.py') --game-dir $resolvedGamePath --destination $practicePath
@@ -62,7 +100,7 @@ if ($Diagnostic) {
     $gameArgs += $(if ($Preview) { '--vr-preview' } else { '--vr' })
     if ($DumpEyes) { $gameArgs += '--vr-dump' }
 }
-Write-Output $(if ($Preview) { 'Starting desktop stereo preview. Ctrl+arrows look around.' } elseif ($Diagnostic) { 'Checking SteamVR / OpenXR headset and D3D11 adapter.' } else { 'Start SteamVR with your headset tracking, then use this window for game input.' })
+Write-Output $(if ($Check) { "Checking original game files in $resolvedGamePath" } elseif ($Preview) { 'Starting desktop stereo preview. Ctrl+arrows look around.' } elseif ($Diagnostic) { 'Checking SteamVR / OpenXR headset and D3D11 adapter.' } else { 'Start SteamVR with your headset tracking, then use this window for game input.' })
 Write-Output "F12: recenter seat. F11: cockpit toggle. Logs: $sessionPath"
 if ($TraceWorld -or $RecordLive) { $env:F117_VR_TIMING = '1' }
 if ($RecordLive) {
@@ -73,7 +111,7 @@ Push-Location $sessionPath
 try {
     & $exePath @gameArgs
     if ($LASTEXITCODE -ne 0) {
-        throw "Game exited with code $LASTEXITCODE. Check f117-vr.log and SteamVR. If SteamVR reports Oasis_UnlockRequired, follow the Oasis headset unlock procedure."
+        throw "Game exited with code $LASTEXITCODE. Check f117.log and f117-vr.log in $sessionPath."
     }
 } finally {
     Pop-Location

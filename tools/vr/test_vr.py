@@ -2,7 +2,7 @@
 
 Copies game data into disposable test folders. The supplied game folder is read only.
 Compares the entire scripted mission's engine hashes and pilot roster with VR off/on.
-Usage: python tools/test_vr.py --exe PATH --game-dir PATH [--work-dir PATH]
+Usage: python tools/vr/test_vr.py --exe PATH --game-dir PATH [--work-dir PATH]
 """
 from __future__ import annotations
 import argparse
@@ -13,7 +13,7 @@ import struct
 import subprocess
 import uuid
 
-ROOT = Path(__file__).resolve().parents[1]
+ROOT = Path(__file__).resolve().parents[2]
 
 
 def roster() -> bytes:

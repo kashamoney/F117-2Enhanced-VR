@@ -1,5 +1,9 @@
 # Water cleanup and aircraft readability — S8.19
 
+Development record: linked images and logs are local, ignored `work/` outputs,
+not bundled GitHub assets. Run commands from the repository root. See the
+[developer guide](../DEVELOPMENT.md) to regenerate evidence.
+
 The normal VR launchers now remove the old sea-dot scenery, correct a moving
 camera/aircraft position jump, and improve the point-to-model transition.
 All testing in this session used desktop preview; SteamVR was not started.
@@ -21,8 +25,8 @@ The distance point also uses precise world coordinates and the same eye/camera
 matrix as the model, avoiding whole-map-cell stepping during the handoff.
 
 - Before: `work/vr-benchmark/1a93f7465d/vr-aircraft-motion.csv`.
-- Final: [motion trace](work/vr-benchmark/dc7783bb86/vr-aircraft-motion.csv).
-- Recheck: `python tools/check_vr_aircraft_motion.py TRACE.csv`.
+- Final: [motion trace](../../../work/vr-benchmark/dc7783bb86/vr-aircraft-motion.csv).
+- Recheck: `python tools/vr/check_vr_aircraft_motion.py TRACE.csv`.
 
 This reproduces and fixes a definite renderer position jump. An actual headset
 MiG dogfight still needs the user's visual review; no change to simulation or
@@ -48,8 +52,8 @@ silhouette width at the fixture's 3 km sample and 2x farther out. Perspective ca
 make the measured projected width slightly exceed 2x, while vertex scaling is
 strictly capped at 2x.
 
-Actual game images: [previous size at 6 km](work/vr-benchmark/285a975626/vr-aircraft-24576.png),
-[new size/point treatment](work/vr-benchmark/dc7783bb86/vr-aircraft-24576.png).
+Actual game images: [previous size at 6 km](../../../work/vr-benchmark/285a975626/vr-aircraft-24576.png),
+[new size/point treatment](../../../work/vr-benchmark/dc7783bb86/vr-aircraft-24576.png).
 These are fixture-distance labels, with the original game's exaggerated model
 proportions retained; they are not a claim about sensor/detection range.
 
@@ -76,7 +80,7 @@ state is restored (`work/vr-check/fbf15ac9ce`). The full presentation comparison
 passes in `work/vr-presentation/271afc2d50`; final motion, coverage and size checks
 use `work/vr-benchmark/dc7783bb86`.
 
-Launch normally with `Carrier-VR.cmd` or `Play-VR.cmd`. For comparisons:
+Launch normally with `tools/vr/Carrier-VR.cmd` or `Play-VR.cmd`. For comparisons:
 
 ```powershell
 .\Carrier-VR.cmd -OriginalAircraftSize
