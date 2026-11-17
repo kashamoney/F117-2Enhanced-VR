@@ -78,7 +78,10 @@ def main():
    SteamVR/OpenXR with an Odyssey+ through Oasis; other setups are unverified.
 3. Double-click f117-enhanced-vr.exe.
 4. Choose your own original DOS game folder when asked. Your choice is remembered
-   under %APPDATA%/kashamoney/F117-Enhanced-VR/settings.ini across upgrades.
+   under %APPDATA%\\F117-Enhanced-VR\\settings.ini across upgrades.
+
+Preview-1 settings are copied automatically on upgrade if the new settings file
+does not already exist; the old file is kept.
 
 No Git, Python, PowerShell scripts, MSYS2 or compiler is required to play.
 You must own the complete supported MicroProse DOS release of F-117A 2.0.

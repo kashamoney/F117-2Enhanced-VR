@@ -18,8 +18,8 @@ It retains the original simulation and keyboard/gamepad flight controls.
   Game files are not included. The GOG `VGAME.EXE` 473.04 build is not supported.
 ## Download and play
 
-**[Download the Windows x64 VR preview ZIP](https://github.com/kashamoney/F117-2Enhanced/releases/download/vr-v0.1.0-preview.1/F117-Enhanced-VR-v0.1.0-preview.1-win64.zip)**
-([release notes and checksum](https://github.com/kashamoney/F117-2Enhanced/releases/tag/vr-v0.1.0-preview.1)).
+**[Download the Windows x64 VR preview ZIP](https://github.com/kashamoney/F117-2Enhanced/releases/download/vr-v0.1.0-preview.2/F117-Enhanced-VR-v0.1.0-preview.2-win64.zip)**
+([release notes and checksum](https://github.com/kashamoney/F117-2Enhanced/releases/tag/vr-v0.1.0-preview.2)).
 
 1. Extract the entire ZIP to a writable folder. Keep the EXE and DLLs together.
 2. Start SteamVR and make sure your headset is tracking.
@@ -31,8 +31,10 @@ game files and an OpenXR runtime are still required. This is an unsigned,
 experimental preview; hardware comfort and pacing need review on each headset.
 
 The downloaded EXE remembers the game folder under
-`%APPDATA%/kashamoney/F117-Enhanced-VR/settings.ini`, so upgrading the application
-does not lose that choice. Hold **Shift** while opening the EXE to choose another
+`%APPDATA%\F117-Enhanced-VR\settings.ini`, so upgrading the application
+does not lose that choice. Existing preview-1 settings are copied automatically
+from the former publisher-named folder; existing settings in the new location take
+priority. The old file is retained for rollback. Hold **Shift** while opening the EXE to choose another
 folder. Saves remain in your selected game folder. Logs are beside the EXE.
 
 **F12** recenters your seat; **F11** toggles the cockpit. Focus the mirror window

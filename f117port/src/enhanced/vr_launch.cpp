@@ -74,13 +74,29 @@ std::string problem(const std::string &directory) {
     return {};
 }
 
-bool remember(const std::string &settings, const std::string &directory) {
-    const auto path = wide(settings);
+bool make_settings_folder(const std::wstring &path) {
     const auto slash = path.find_last_of(L"/\\");
     if (slash != std::wstring::npos) {
         const int rc = SHCreateDirectoryExW(nullptr, path.substr(0, slash).c_str(), nullptr);
         if (rc != ERROR_SUCCESS && rc != ERROR_ALREADY_EXISTS && rc != ERROR_FILE_EXISTS) return false;
     }
+    return true;
+}
+
+bool migrate_settings(const std::string &settings, const std::string &legacy) {
+    const auto destination = wide(settings), source = wide(legacy);
+    /* Existing new settings always win; retain the legacy file for rollback. */
+    if (GetFileAttributesW(destination.c_str()) != INVALID_FILE_ATTRIBUTES ||
+        GetFileAttributesW(source.c_str()) == INVALID_FILE_ATTRIBUTES) return true;
+    if (!make_settings_folder(destination)) return false;
+    if (CopyFileW(source.c_str(), destination.c_str(), TRUE)) return true;
+    const DWORD error = GetLastError();
+    return error == ERROR_FILE_EXISTS || error == ERROR_ALREADY_EXISTS;
+}
+
+bool remember(const std::string &settings, const std::string &directory) {
+    const auto path = wide(settings);
+    if (!make_settings_folder(path)) return false;
     /* A UTF-16 BOM makes the Windows profile API retain non-ASCII folder names. */
     HANDLE file = CreateFileW(path.c_str(), GENERIC_WRITE, 0, nullptr, CREATE_NEW, FILE_ATTRIBUTE_NORMAL, nullptr);
     if (file != INVALID_HANDLE_VALUE) {
@@ -128,10 +144,18 @@ int vr_launch_prepare(const char **directory, bool explicit_directory,
     std::string settings;
     if (settings_file) settings = absolute(settings_file);
     else {
-        char *pref = SDL_GetPrefPath("kashamoney", "F117-Enhanced-VR");
-        if (!pref) return fail("Cannot open your user settings folder.", interactive);
-        settings = std::string(pref) + "settings.ini";
-        SDL_free(pref);
+        /* Windows APPDATA also permits isolated profiles for automated checks. */
+        std::vector<wchar_t> roaming(32768);
+        DWORD n = GetEnvironmentVariableW(L"APPDATA", roaming.data(), DWORD(roaming.size()));
+        if (!n || n >= roaming.size()) {
+            if (FAILED(SHGetFolderPathW(nullptr, CSIDL_APPDATA, nullptr, SHGFP_TYPE_CURRENT, roaming.data())))
+                return fail("Cannot open your user settings folder.", interactive);
+        }
+        const auto root = utf8(roaming.data());
+        settings = absolute(root + "/F117-Enhanced-VR/settings.ini");
+        const auto legacy = absolute(root + "/kashamoney/F117-Enhanced-VR/settings.ini");
+        if (!migrate_settings(settings, legacy))
+            return fail("Cannot migrate your saved VR settings. Check that the user settings folder is writable.", interactive);
     }
     if (settings.empty()) return fail("Invalid --vr-config path.", interactive);
     bool supplied = explicit_directory;
