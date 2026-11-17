@@ -65,7 +65,7 @@ Commit source changes before packaging a public build:
 
 ```powershell
 python tools/vr/package_release.py --game-dir "D:/Games/F117"
-python tools/vr/test_release.py --package release/F117-Enhanced-VR-v0.1.0-preview.2-win64.zip --game-dir "D:/Games/F117" --check-dialog
+python tools/vr/test_release.py --package release/F117-Enhanced-VR-v0.1.0-win64.zip --game-dir "D:/Games/F117" --check-dialog
 ```
 
 Packaging performs a Release build and ten focused checks, includes the exact
@@ -82,8 +82,8 @@ unsupported-game rejection, and renders a real D3D11 preview. `--check-dialog`
 also starts the no-argument EXE and cancels only that test process's first-use
 folder picker before OpenXR starts. Scripted mission checks can additionally
 point `tools/vr/test_vr.py` at the extracted EXE. Headset comfort/reprojection are
-outside desktop automation. Publish preview ZIPs as GitHub prereleases, with a
-tag identifying the exact tested source commit.
+outside desktop automation. Publish a regular GitHub release from the exact
+tested source tag, upload the ZIP and checksum, and mark it as the latest release.
 
 ## Update from upstream
 

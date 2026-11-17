@@ -71,7 +71,7 @@ def main():
     (stage / 'licenses').mkdir()
     for name in NOTICES:
         shutil.copy2(ROOT / 'licenses' / name, stage / 'licenses' / name)
-    (stage / 'README.txt').write_text(f'''F-117A Enhanced VR {version()} - Windows x64 preview
+    (stage / 'README.txt').write_text(f'''F-117A Enhanced VR {version()} - Windows x64
 
 1. Extract this entire ZIP to a writable folder. Keep the EXE and DLLs together.
 2. Start SteamVR and make sure your headset is tracking. The tested runtime is
@@ -79,9 +79,6 @@ def main():
 3. Double-click f117-enhanced-vr.exe.
 4. Choose your own original DOS game folder when asked. Your choice is remembered
    under %APPDATA%\\F117-Enhanced-VR\\settings.ini across upgrades.
-
-Preview-1 settings are copied automatically on upgrade if the new settings file
-does not already exist; the old file is kept.
 
 No Git, Python, PowerShell scripts, MSYS2 or compiler is required to play.
 You must own the complete supported MicroProse DOS release of F-117A 2.0.
@@ -99,10 +96,9 @@ Optional terminal commands:
   f117-enhanced-vr.exe --vr-diagnostic    OpenXR/runtime diagnostic
   f117-enhanced-vr.exe --check --game-dir "D:/Games/F117"
 
-This unsigned experimental preview is not an installer. Automated checks cover
-game state, rendering and startup; headset comfort/pacing need hardware review.
+This is a portable Windows release. The Windows executable is unsigned.
 Logs (f117.log / f117-vr.log) are useful when reporting a problem.
-Source, controls and issue reports: https://github.com/kashamoney/F117-2Enhanced
+Source, controls and issue reports: https://github.com/kashamoney/F117-2Enhanced-VR
 ''', encoding='utf-8')
     (stage / 'licenses/THIRD-PARTY.txt').write_text('''The game source is MIT licensed (../LICENSE). This package contains:
 SDL3.dll: SDL, zlib license, https://libsdl.org
